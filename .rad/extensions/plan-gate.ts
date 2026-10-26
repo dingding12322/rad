@@ -1,9 +1,11 @@
 /**
  * plan-gate — 大任务 plan 确认强拦截（rad 扩展，移植自 OpenCode 插件）
- * 规则: 大任务必须先输出 plan，用户明确同意后才允许改代码。
- * 判定: input 命中关键词 + 长任务启发式；同意关键词解除（否定语境与长消息不算批准）。
- * 阻断: tool_call 对 edit/write 返回 { block: true }，Pi 官方 gate 机制。
- * 状态: pending 期间在状态栏显示提示，批准或会话结束即清除。
+ * 规则: 大任务必须先输出 plan，用户通过后才允许改代码。
+ * 判定: input 命中关键词 + 长任务启发式；同意关键词或审批弹窗「通过」解除
+ *       （否定语境与长消息不算批准）。
+ * 阻断: tool_call 拦截 edit/write——有 UI 时弹审批对话框（Orbit 渲染为带
+ *       「通过」按钮的对话框，TUI 为原生确认），headless 保持硬阻断。
+ * 状态: pending 期间在状态栏显示提示，通过或会话结束即清除。
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -70,8 +72,23 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("tool_call", (event) => {
+	// 拦截写操作:有 UI 时弹确认框(Orbit 渲染为带「通过」按钮的对话框,TUI 为原生确认),
+	// 用户点通过即放行本次任务;无 UI(headless)保持硬阻断
+	pi.on("tool_call", async (event, ctx) => {
 		if (!WRITE_TOOLS.has(event.toolName)) return;
-		if (pending) return { block: true, reason: BLOCK_REASON };
+		if (!pending) return;
+		if (ctx.hasUI) {
+			const approved = await ctx.ui.confirm(
+				"plan-gate：等待 Plan 审批",
+				"Agent 已输出 Plan 并请求执行写操作。通过后本次任务不再拦截。",
+			);
+			if (approved) {
+				pending = false;
+				ctx.ui.setStatus(STATUS_KEY, undefined);
+				return;
+			}
+			return { block: true, reason: "[plan-gate] 用户未通过：继续只读调研，或回复同意后再试。" };
+		}
+		return { block: true, reason: BLOCK_REASON };
 	});
 }
