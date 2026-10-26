@@ -24,6 +24,7 @@ rad/
 | Herdr | 终端多会话控制层（Rust） | 独立安装，不魔改 |
 | pi-subagents / pi-crew 等 | 编排扩展 | `rad install`，settings 声明 |
 | pi-agent-dashboard | 浏览器监控 | 可选 |
+| OpenViking server | 个人记忆服务（Python/uv） | 本地 `127.0.0.1:1933`，MCP 经 `~/.rad/agent/mcp.json` |
 
 ## 边界红线
 
@@ -34,8 +35,20 @@ rad/
 ## 当前状态
 
 - [x] 内核改名 rad、configDir=.rad
-- [x] plan-gate / openviking 扩展
+- [x] plan-gate 扩展：GUI 弹窗审批（拦截写操作时 `ctx.ui.confirm`，
+      Orbit 渲染为带「通过」按钮的对话框；headless 保持硬阻断）
 - [x] orbit vendored（0.2.12 快照）
+- [x] orbit 二进制覆盖 `~/.orbit-pi/binary.json`（bin=rad 启动脚本 +
+      packageRoot=仓库包，双击启动不再误拉官方 pi）
+- [x] orbit agent-dir 中心化（sessions/auth.json/models.json/skills/plugins
+      全部跟随 `~/.rad/agent`，凭证写读同源）
+- [x] OpenViking 接入：MCP 15 工具直连 + Studio 原生 WKWebView 窗口
+      （Settings→About 入口，key 自动注入 `ov_console_connection`）
+- [x] 模型上下文统一 476K（`~/.rad/agent/models.json` modelOverrides）
 - [ ] platform/setup 一键还原脚本
-- [ ] orbit configDir 跟随 rad（去掉 ~/.pi symlink 桥接）
+- [ ] openviking 记忆 hook 移植为 rad 扩展（plan 已出：session_start/
+      context/before_agent_start/agent_settled/session_before_compact/
+      session_shutdown/tool_call 七事件映射，待实施）
+
+AI agent 进入项目请先读根目录 `AI.md`（运行时拓扑、红线、构建验证、已知坑）。
 - [ ] Rust 工具链引导（orbit 本地构建前提）
