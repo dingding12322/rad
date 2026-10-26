@@ -205,6 +205,9 @@ fn open_webview_window(url: &str) -> Result<(), String> {
         let _: () = msg_send![webview, setAutoresizingMask: SIZE_TO_FIT_PARENT];
 
         let url_string = ns_string(url)?;
+        // `URLWithString:`/`requestWithURL:` are convenience constructors:
+        // they return autoreleased objects, so no manual release here — an
+        // extra one over-releases and tears the app down mid-navigation.
         let url: *mut AnyObject = msg_send![class!(NSURL), URLWithString: url_string];
         release(url_string);
         if url.is_null() {
@@ -213,9 +216,7 @@ fn open_webview_window(url: &str) -> Result<(), String> {
             return Err(tr!("studio.window_failed"));
         }
         let request: *mut AnyObject = msg_send![class!(NSURLRequest), requestWithURL: url];
-        release(url);
         let _: () = msg_send![webview, loadRequest: request];
-        release(request);
 
         let _: () = msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
         // `content_view` and `webview` are owned by their owners (the window
