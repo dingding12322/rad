@@ -615,7 +615,7 @@ fn read_version(install_path: &Path) -> Option<String> {
 }
 
 fn agent_dir() -> PathBuf {
-    crate::platform::home_dir().join(".pi").join("agent")
+    orbit_rpc::agent_dir()
 }
 
 /// Run `pi <args>` from `workspace`, returning stdout on success. Mirrors the

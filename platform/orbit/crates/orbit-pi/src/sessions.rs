@@ -15,7 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         mpsc::{self, Receiver},
-        OnceLock, RwLock,
+        RwLock,
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -53,26 +53,7 @@ pub struct SessionInfo {
 /// (rad ships `configDir: ".rad"`) points Orbit at its own store without a
 /// symlink bridge. Falls back to the official `~/.pi/agent`.
 pub fn sessions_dir() -> PathBuf {
-    agent_dir().join("sessions")
-}
-
-fn agent_dir() -> PathBuf {
-    static AGENT_DIR: OnceLock<PathBuf> = OnceLock::new();
-    AGENT_DIR
-        .get_or_init(|| {
-            let override_path = dirs_home().join(".orbit-pi/agent-dir.json");
-            if let Ok(text) = fs::read_to_string(&override_path) {
-                if let Ok(value) = serde_json::from_str::<Value>(&text) {
-                    if let Some(dir) = value.get("agentDir").and_then(Value::as_str) {
-                        if !dir.is_empty() {
-                            return PathBuf::from(dir);
-                        }
-                    }
-                }
-            }
-            dirs_home().join(".pi/agent")
-        })
-        .clone()
+    orbit_rpc::agent_dir().join("sessions")
 }
 
 fn dirs_home() -> PathBuf {

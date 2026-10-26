@@ -13,7 +13,7 @@ pub mod client;
 pub mod types;
 
 pub use client::{
-    augmented_path, hide_console, pi_bin_candidates, pi_binary, pi_package_root,
+    augmented_path, hide_console, agent_dir, pi_bin_candidates, pi_binary, pi_package_root,
     pi_package_root_from, PiClient, PI_BIN_ENV, PI_PACKAGE_ROOT_ENV,
 };
 pub use types::{

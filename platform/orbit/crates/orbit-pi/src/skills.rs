@@ -165,7 +165,7 @@ pub(crate) fn home_agents_skills() -> PathBuf {
 }
 
 fn agent_dir() -> PathBuf {
-    home_dir().join(".pi").join("agent")
+    orbit_rpc::agent_dir()
 }
 
 fn home_dir() -> PathBuf {

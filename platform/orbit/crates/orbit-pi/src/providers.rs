@@ -18,11 +18,9 @@ use std::sync::OnceLock;
 
 use serde_json::{Map, Value};
 
-/// `~/.pi/agent/models.json`, matching the pi CLI's own store.
+/// The pi CLI's own `models.json` store under the harness's agent dir.
 pub(crate) fn models_json_path() -> PathBuf {
-    crate::platform::home_dir()
-        .join(".pi")
-        .join("agent")
+    orbit_rpc::agent_dir()
         .join("models.json")
 }
 
@@ -295,12 +293,10 @@ fn write_root_at(path: &Path, root: &Value) -> Result<(), String> {
     })
 }
 
-/// `~/.pi/agent/auth.json`, pi's credential store (0600).
+/// The driven harness's credential store (0600). Follows the harness's own
+/// agent-dir resolution (rad ships configDir `.rad`).
 pub(crate) fn auth_path() -> PathBuf {
-    crate::platform::home_dir()
-        .join(".pi")
-        .join("agent")
-        .join("auth.json")
+    orbit_rpc::agent_dir().join("auth.json")
 }
 
 /// `auth.json` key holding the Ollama Cloud session cookie. Deliberately not a

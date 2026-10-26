@@ -853,6 +853,46 @@ fn home_dir() -> Option<PathBuf> {
         .or_else(|| std::env::var_os("USERPROFILE").map(PathBuf::from))
 }
 
+/// The agent directory of the driven harness — where pi keeps sessions,
+/// `auth.json`, `models.json`, skills, and installed packages.
+///
+/// Resolution order: the `~/.orbit-pi/agent-dir.json` override
+/// (`{ "agentDir": "/absolute/path" }` — a renamed harness like rad ships
+/// `configDir: ".rad"`), then `<home>/<configDir>/agent` derived from the pi
+/// package's `package.json`, then the official `~/.pi/agent`.
+pub fn agent_dir() -> PathBuf {
+    static AGENT_DIR: OnceLock<PathBuf> = OnceLock::new();
+    AGENT_DIR.get_or_init(|| {
+        let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
+        if let Ok(text) = fs::read_to_string(home.join(".orbit-pi/agent-dir.json")) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                if let Some(dir) = value.get("agentDir").and_then(serde_json::Value::as_str) {
+                    if !dir.is_empty() {
+                        return PathBuf::from(dir);
+                    }
+                }
+            }
+        }
+        if let Ok(root) = pi_package_root() {
+            if let Ok(manifest) = fs::read_to_string(root.join("package.json")) {
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&manifest) {
+                    if let Some(dir) = value
+                        .get("piConfig")
+                        .and_then(|v| v.get("configDir"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        if !dir.is_empty() {
+                            return home.join(dir).join("agent");
+                        }
+                    }
+                }
+            }
+        }
+        home.join(".pi").join("agent")
+    })
+    .clone()
+}
+
 /// The PATH handed to a pi child: the resolved binary's dir plus common
 /// install dirs prepended to whatever PATH the parent process has. Public so
 /// every direct pi spawn (updater, version probe) resolves `node` from a
