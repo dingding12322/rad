@@ -163,9 +163,7 @@ fn open_webview_window(url: &str) -> Result<(), String> {
                  if(!c.adminApiKey&&!c.apiKey){{localStorage.setItem(k,JSON.stringify({{accountId:'{account}',\
                  adminApiKey:'{escaped}',apiKey:'{escaped}',baseUrl:'{OV_ORIGIN}',userId:'{user}'}}))}}}}catch(e){{}}"
             );
-            let Some(source) = ns_string(&script_body)? else {
-                unreachable!()
-            };
+            let source = ns_string(&script_body)?;
             let user_script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
             let user_script: *mut AnyObject = msg_send![user_script,
                 initWithSource: source,
