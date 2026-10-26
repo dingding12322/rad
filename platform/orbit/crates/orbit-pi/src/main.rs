@@ -97,6 +97,7 @@ mod sessions;
 mod shimmer;
 mod sidepane;
 mod skills;
+mod studio;
 mod temp_files;
 mod terminal;
 mod theme;

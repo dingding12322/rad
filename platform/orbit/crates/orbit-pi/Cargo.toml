@@ -120,6 +120,8 @@ objc2-foundation = { version = "0.3", default-features = false, features = [
     "NSDictionary",
     "NSError",
     "NSFileManager",
+    # Geometry structs (NSRect/NSPoint/NSSize) for the Studio WKWebView window.
+    "NSGeometry",
     "NSLocale",
     "NSString",
     "NSURL",

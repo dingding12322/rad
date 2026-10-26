@@ -1045,6 +1045,7 @@ impl OrbitApp {
                     None,
                     Some(self.about_github_button(theme)),
                 ));
+                about.push(self.openviking_studio_row(theme, cx));
                 // The page header already reads "About"; a board header of
                 // the same name would just repeat it, so the group is
                 // headerless.
@@ -4659,6 +4660,78 @@ impl OrbitApp {
                 cx.open_url(env!("CARGO_PKG_REPOSITORY"));
             })
             .into_any_element()
+    }
+
+    // ── Settings → About: OpenViking Studio ─────────────────────────────
+
+    /// The About page's OpenViking Studio entry: opens the OpenViking web
+    /// console — a native WKWebView window on macOS, the system browser
+    /// elsewhere — after confirming the local server is up.
+    pub(super) fn openviking_studio_row(
+        &self,
+        theme: Theme,
+        cx: &Context<Self>,
+    ) -> AnyElement {
+        let open = button_frame(
+            div().id("openviking-studio-open"),
+            &theme,
+            ButtonSize::Medium,
+        )
+        .group(BUTTON_GROUP)
+        .border_1()
+        .border_color(theme.border)
+        .raised(theme.surface_elevated, &theme)
+        .font_weight(FontWeight::MEDIUM)
+        .text_color(theme.text_secondary)
+        .cursor_pointer()
+        .hover(|s| s.raised(theme.surface_hover, &theme))
+        .child(icon(
+            "icons/arrow-up-right.svg",
+            ButtonSize::Medium.icon_size().px(&theme),
+            theme.text_secondary,
+        ))
+        .child(tr!("settings.openviking_studio_open"))
+        .on_mouse_up(MouseButton::Left, {
+            let this = cx.entity().downgrade();
+            move |_, _, cx| {
+                let this = this.clone();
+                cx.spawn(async move |cx| {
+                    let server_up = cx
+                        .background_executor()
+                        .spawn(async { crate::studio::health_ok() })
+                        .await;
+                    let _ = this.update(cx, |app, _cx| {
+                        if !server_up {
+                            app.toast_warning(tr!("settings.openviking_unreachable"));
+                            return;
+                        }
+                        if let Err(err) = crate::studio::open_window() {
+                            // No native window (or it failed): fall back to
+                            // the system browser, always available.
+                            if let Err(open_err) =
+                                platform::open_url(crate::studio::STUDIO_URL)
+                            {
+                                app.toast_warning(tr!(
+                                    "runtime.browser_failed",
+                                    error = open_err
+                                ));
+                            } else {
+                                let _ = err;
+                            }
+                        }
+                    });
+                })
+                .detach();
+            }
+        })
+        .into_any_element();
+        self.setting_row(
+            theme,
+            &tr!("settings.openviking_studio"),
+            Some(&tr!("settings.openviking_studio_desc")),
+            None,
+            Some(open),
+        )
     }
 
     // ── Settings → Shortcuts ─────────────────────────────────────
