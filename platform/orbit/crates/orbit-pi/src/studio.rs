@@ -22,8 +22,9 @@ pub const STUDIO_URL: &str = "http://127.0.0.1:1933/studio/";
 #[link(name = "WebKit", kind = "framework")]
 extern "C" {}
 
-/// The `localStorage` key the Studio frontend reads its API key from.
-const STUDIO_KEY_STORE: &str = "ov_console_api_key";
+/// The `localStorage` key holding the Studio console's connection JSON
+/// (`accountId`/`adminApiKey`/`apiKey`/`baseUrl`/`userId`).
+const CONNECTION_STORE: &str = "ov_console_connection";
 
 /// Whether the local OpenViking server answers `/health`. Blocking network
 /// I/O — run on a background executor, never on the UI thread.
@@ -42,18 +43,24 @@ pub fn health_ok() -> bool {
         .unwrap_or(false)
 }
 
-/// The OpenViking API key from `~/.openviking/ovcli.conf` (a JSON plist —
-/// the same file the OpenCode plugin resolves credentials from), or `None`
-/// when absent; the console then asks for the key itself.
-fn api_key() -> Option<String> {
+/// One top-level string value from `~/.openviking/ovcli.conf` (a JSON
+/// plist), or `None` when absent/empty.
+fn conf_value(name: &str) -> Option<String> {
     let path = platform::home_dir_opt()?.join(".openviking").join("ovcli.conf");
     let raw = std::fs::read_to_string(path).ok()?;
     let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
     value
-        .get("api_key")
+        .get(name)
         .and_then(serde_json::Value::as_str)
-        .filter(|key| !key.is_empty())
+        .filter(|v| !v.is_empty())
         .map(str::to_owned)
+}
+
+/// The OpenViking API key from `~/.openviking/ovcli.conf` (a JSON plist —
+/// the same file the OpenCode plugin resolves credentials from), or `None`
+/// when absent; the console then asks for the key itself.
+fn api_key() -> Option<String> {
+    conf_value("api_key")
 }
 
 /// Open the Studio console. macOS raises a native WKWebView window; other
@@ -143,13 +150,22 @@ fn open_webview_window(url: &str) -> Result<(), String> {
             return Err(tr!("studio.window_failed"));
         }
         if let Some(key) = api_key() {
-            // The console reads its API key from localStorage; writing it at
-            // document start skips its manual key prompt. The script body is
-            // data (a key), so it must not close the string it lands in.
+            // The console reads its connection from the `ov_console_connection`
+            // JSON (accountId/adminApiKey/apiKey/baseUrl/userId); writing it
+            // at document start skips its manual key prompt. Only fill it in
+            // when no key is configured yet, so manual edits win. The script
+            // body is data (a key), so it must not close the string it lands in.
             let escaped = key.replace('\\', "\\\\").replace('\'', "\\'");
-            let source = ns_string(&format!(
-                "try{{localStorage.setItem('{STUDIO_KEY_STORE}','{escaped}');}}catch(e){{}}"
-            ))?;
+            let account = conf_value("account").unwrap_or_else(|| "default".to_string());
+            let user = conf_value("user").unwrap_or_else(|| "default".to_string());
+            let script_body = format!(
+                "try{{var k='{CONNECTION_STORE}';var c={{}};try{{c=JSON.parse(localStorage.getItem(k)||'{{}}')}}catch(e){{}};\
+                 if(!c.adminApiKey&&!c.apiKey){{localStorage.setItem(k,JSON.stringify({{accountId:'{account}',\
+                 adminApiKey:'{escaped}',apiKey:'{escaped}',baseUrl:'{OV_ORIGIN}',userId:'{user}'}}))}}}}catch(e){{}}"
+            );
+            let Some(source) = ns_string(&script_body)? else {
+                unreachable!()
+            };
             let user_script: *mut AnyObject = msg_send![class!(WKUserScript), alloc];
             let user_script: *mut AnyObject = msg_send![user_script,
                 initWithSource: source,
