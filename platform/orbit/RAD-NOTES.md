@@ -11,10 +11,12 @@
 
 ## 已知魔改目标（按优先级）
 
-1. **configDir 跟随 rad**：Orbit 源码硬编码 `~/.pi/agent/sessions` 等官方路径
-   （`crates/orbit-pi/src/sessions.rs` 的 `sessions_dir()`），应改为从
-   `rad piConfig.configDir`（当前为 `.rad`）推导，从根上去掉
-   `~/.pi/agent/sessions -> ~/.rad/agent/sessions` 的 symlink 桥接。
+1. **configDir 跟随 rad**：✅ 已完成（2026-10-26）。`sessions_dir()` 读取
+   `~/.orbit-pi/agent-dir.json` 的 `{ "agentDir": "/absolute/path" }` 覆盖
+   （沿用本仓 `~/.orbit-pi/*.json` 每功能一文件的持久化惯例），缺省回退官方
+   `~/.pi/agent`。rad 环境已配置指向 `~/.rad/agent`，symlink 桥已拆除。
+   注意：仅会话存储走此覆盖；二进制解析（`resolve_pi_bin`）仍按
+   设置页 binary / `PI_BIN` / `~/.local/bin/pi` 垫片的顺序。
 2. **二进制探测跟随 rad**：`crates/orbit-rpc/src/client.rs` 的
    `resolve_pi_bin()` 默认找 `pi`（含 `~/.local/bin/pi` 探测），应支持
    `PI_BIN` 之外的持久化配置（设置页已有 `settings.binary` 字段，确认其
