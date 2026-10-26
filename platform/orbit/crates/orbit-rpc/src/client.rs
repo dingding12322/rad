@@ -21,7 +21,7 @@ use std::{
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Stdio},
     sync::{
         mpsc::{self, Receiver, Sender},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
     thread,
     time::{SystemTime, UNIX_EPOCH},
@@ -37,6 +37,35 @@ pub const PI_BIN_ENV: &str = "PI_BIN";
 /// pi's `package.json`. The RPC patcher sets it so its bundled `apply.mjs`
 /// scripts skip their own layout-dependent search.
 pub const PI_PACKAGE_ROOT_ENV: &str = "PI_PACKAGE_ROOT";
+
+/// `~/.orbit-pi/binary.json` override for renamed harnesses:
+/// `{ "bin": "/abs/launcher", "packageRoot": "/abs/pkg-root" }`. `bin` is
+/// spawned directly (first candidate); `packageRoot` feeds the RPC patcher
+/// and must pass `is_pi_package`. Read once per process; `PI_BIN`, `PATH`,
+/// and the platform search dirs remain as fallbacks.
+#[derive(Clone)]
+struct BinaryOverride {
+    bin: PathBuf,
+    package_root: Option<PathBuf>,
+}
+
+fn binary_override() -> Option<BinaryOverride> {
+    static OVERRIDE: OnceLock<Option<BinaryOverride>> = OnceLock::new();
+    OVERRIDE
+        .get_or_init(|| {
+            let home = std::env::var_os("HOME")?;
+            let path = PathBuf::from(home).join(".orbit-pi").join("binary.json");
+            let raw = fs::read_to_string(path).ok()?;
+            let value: serde_json::Value = serde_json::from_str(&raw).ok()?;
+            let bin = PathBuf::from(value.get("bin")?.as_str()?);
+            let package_root = value
+                .get("packageRoot")
+                .and_then(serde_json::Value::as_str)
+                .map(PathBuf::from);
+            Some(BinaryOverride { bin, package_root })
+        })
+        .clone()
+}
 /// The npm package name that identifies a pi install, and the directory it
 /// occupies under `node_modules`.
 const PI_PACKAGE_NAME: &str = "@earendil-works/pi-coding-agent";
@@ -554,6 +583,12 @@ fn resolve_pi_bin() -> String {
 /// *inspect* the install (the RPC patcher) can, not just spawn it.
 pub fn pi_bin_candidates() -> Vec<PathBuf> {
     let mut bins: Vec<PathBuf> = Vec::new();
+    // Renamed-harness override (rad ships bin `rad` + configDir `.rad`): a
+    // persisted launcher wins so bundled-app launches are deterministic.
+    // Remaining candidates stay as fallbacks in case the override vanishes.
+    if let Some(ov) = binary_override() {
+        push_unique(&mut bins, ov.bin);
+    }
     if let Ok(bin) = std::env::var(PI_BIN_ENV) {
         if !bin.is_empty() {
             push_unique(&mut bins, PathBuf::from(bin));
@@ -602,6 +637,21 @@ fn push_unique(bins: &mut Vec<PathBuf>, candidate: PathBuf) {
 /// (`PI_BIN`, `PATH`, then the platform search dirs), then the managed install
 /// roots directly. Callers persist a success so later launches skip the search.
 pub fn pi_package_root() -> Result<PathBuf, String> {
+    // Persisted override wins over probing: a renamed harness's package root
+    // can never be found from its launcher (e.g. a zsh wrapper outside any
+    // node_modules). Invalid paths error instead of falling through silently.
+    if let Some(ov) = binary_override() {
+        if let Some(root) = ov.package_root {
+            if is_pi_package(&root) {
+                return Ok(root);
+            }
+            return Err(format!(
+                "{} is not a pi package root",
+                root.display()
+            ));
+        }
+    }
+
     if let Some(root) = env_package_root()? {
         return Ok(root);
     }
