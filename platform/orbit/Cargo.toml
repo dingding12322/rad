@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/orbit-pi",
+    "crates/orbit-rpc",
+]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/imrj05/orbit"
+
+[workspace.dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Faster debug builds at the expense of runtime performance — fine for a
+# rendering spike. Drop this when measuring real-world perf.
+[profile.dev]
+opt-level = 1
+# Incremental codegen for this crate has emitted object files whose internal
+# LLVM symbols no longer match its dependencies' rlibs, failing the final link
+# with `ld: symbol(s) not found for architecture arm64`. Build non-incrementally
+# so `cargo build`/`bacon` links reliably; a from-scratch app rebuild is ~25s.
+incremental = false

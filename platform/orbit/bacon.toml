@@ -1,0 +1,20 @@
+# Development jobs — run `bacon run` for the live-reload loop.
+# bacon restarts Orbit on every save (kill_then_restart: the running app is
+# killed, the crate recompiles, and a fresh window opens).
+
+default_job = "run"
+
+[jobs.run]
+command = ["cargo", "run", "-p", "orbit-pi"]
+need_git_repo = false
+on_change_strategy = "kill_then_restart"
+watch = ["crates/orbit-pi/src", "crates/orbit-rpc/src"]
+
+[jobs.check]
+command = ["cargo", "check", "-p", "orbit-pi", "--all-targets"]
+need_git_repo = false
+watch = ["crates/orbit-pi/src", "crates/orbit-rpc/src"]
+
+[keybindings]
+r = "job:run"       # re-run even without changes
+c = "job:check"     # quick type check

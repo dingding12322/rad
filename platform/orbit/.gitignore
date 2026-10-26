@@ -1,0 +1,39 @@
+# Rust build output
+target
+crates/**/target
+
+# Python bytecode caches (scripts/)
+__pycache__/
+*.pyc
+
+# Packaging output (DMGs, tarballs, checksums). Never commit these: stale
+# artifacts get swept up by the release workflow's dist/*.dmg globs.
+dist/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log
+*.local
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Signing secrets — never commit a private key
+# (see CONTRIBUTING.md → Releasing → In-app updates)
+orbit-update.pem
+*.pem
+*.key
+*.p12
+*.pfx
+# Orbit worktrees (local only)
+.wt/
+
+# Design-tool state: critique archives and run snapshots are generated locally
+# and are specific to one machine's review history, like the editor directories
+# above. `git add -f` one if a particular archive is worth keeping.
+.impeccable/

@@ -1,0 +1,37 @@
+version: 2
+
+# Version bumps are grouped so a 777-package Rust graph does not open dozens of
+# PRs a week. Security updates are deliberately left ungrouped
+# (`applies-to: version-updates`) so an advisory ships on its own, with its own
+# review, instead of waiting behind an unrelated minor bump.
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        patterns: ["*"]
+        applies-to: version-updates
+
+  - package-ecosystem: npm
+    directory: "/marketing"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      marketing:
+        patterns: ["*"]
+        applies-to: version-updates
+
+  # Keeps the SHA pins in .github/workflows/ current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+        applies-to: version-updates

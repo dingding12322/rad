@@ -1,0 +1,11 @@
+{
+  "name": "orbit-workflow-bridge",
+  "version": "0.0.14",
+  "private": true,
+  "type": "module",
+  "description": "Orbit's workflow mode: a pi extension loaded with --extension that scopes a session to Plan/Build/Ask and reports plan progress as session entries.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  }
+}

@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest a capability or improvement for Orbit.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Orbit is growing toward a full workbench. Before proposing a feature,
+        please read the roadmap in
+        [PRODUCT.md](https://github.com/imrj05/orbit/blob/main/PRODUCT.md) and
+        [README.md](https://github.com/imrj05/orbit/blob/main/README.md).
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the need or friction, not just the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like Orbit to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have tried.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Transcript / chat
+        - Sessions / projects
+        - Composer / models / thinking
+        - Tools / access modes
+        - Review / Git
+        - Workbench pages (usage, skills, plugins, providers, settings)
+        - Theming / appearance
+        - Packaging / distribution
+        - Other
+    validations:
+      required: true

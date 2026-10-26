@@ -1,0 +1,25 @@
+Orbit
+Copyright 2026 Orbit contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+It is a native desktop workbench for the pi coding agent and distributes
+third-party components under their own licenses, including:
+
+- GPUI (Apache-2.0), by Zed Industries — https://github.com/zed-industries/zed
+- Waku (MIT), by egoist — https://github.com/egoist/waku — the review-diff,
+  turn-checkpoint, syntax-highlighting, and localization patterns adapted in
+  crates/orbit-pi are derived from it under its MIT license
+- The HugeIcons icon set (MIT)
+- The skill-icons Tux mark used on the marketing site (MIT), by tandpfun —
+  https://github.com/tandpfun/skill-icons
+- Bundled font families, each under the SIL Open Font License 1.1
+  (OFL.txt files ship alongside the fonts under
+  crates/orbit-pi/assets/fonts/bundled/)
+- Nerd Fonts Symbols Only (MIT), by Ryan L McIntyre — the file icons.
+  Its glyph sets carry their own permissive licenses; see the upstream
+  "Symbols Only" README:
+  https://github.com/ryanoasis/nerd-fonts/tree/master/patched-fonts/NerdFontsSymbolsOnly
+
+The pi coding agent CLI is a separate program and is not distributed with
+Orbit. See https://github.com/earendil-works/pi.

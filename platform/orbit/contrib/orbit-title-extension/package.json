@@ -1,0 +1,11 @@
+{
+  "name": "orbit-title-bridge",
+  "version": "0.0.6",
+  "private": true,
+  "type": "module",
+  "description": "Orbit's session auto-title: a pi extension loaded with --extension that titles a session from its first exchange through pi.setSessionName.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test"
+  }
+}

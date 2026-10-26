@@ -1,0 +1,184 @@
+[package]
+name = "orbit-pi"
+version = "0.2.12"
+description = "Native GPUI workbench for the pi coding agent"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[package.metadata.bundle]
+name = "Orbit Pi"
+identifier = "dev.orbit.pi"
+# One icon per platform variant: .icns (macOS), .ico (Windows), .png (Linux).
+icon = [
+    "../../assets/icons/icon.icns",
+    "../../assets/icons/icon.ico",
+    "../../assets/icons/icon.png",
+]
+osx_minimum_system_version = "13.0"
+
+[dependencies]
+# `windows-manifest` is a gpui default feature that links gpui's own
+# `RT_MANIFEST` resource into every binary. This crate embeds its own manifest
+# (see `build.rs`), and two manifests of the same type/id/language make CVTRES
+# fail the Windows link with `CVT1100: duplicate resource`. So it is turned off
+# here and the app's manifest — the superset, with per-monitor-v2 DPI, long
+# paths, `asInvoker`, and the supportedOS list — is the one that ships. The
+# remaining defaults are re-listed because `default-features = false` clears all
+# of them; `font-kit`/`wayland`/`x11` gate Linux/FreeBSD-only dependencies, so
+# they stay no-ops on Windows and macOS.
+gpui = { version = "0.2.2", default-features = false, features = [
+    "font-kit",
+    "runtime_shaders",
+    "wayland",
+    "x11",
+] }
+# Compile-time locale loading (YAML) and the global `t!` lookup used by the
+# `tr!`/`tr_cow!` macros. Locales live in `crates/orbit-pi/locales/`.
+rust-i18n = "4.2"
+# Native open/folder dialogs (NSOpenPanel on macOS) for folder selection
+rfd = "0.15"
+orbit-rpc = { path = "../orbit-rpc" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+unicode-segmentation = "1"
+include_dir = "0.7"
+# The Explorer's workspace walker. Ripgrep's recursive walker already exists
+# transitively (via `notify`/`globset`), so naming it adds no new package; it
+# brings correct nested `.gitignore` / `.ignore` / global-ignore handling and
+# hidden-file filtering, which a hand-rolled `read_dir` walk cannot.
+ignore = "0.4"
+# Watch pi's on-disk session store so sessions written by the CLI or another
+# Orbit window refresh the sidebar live (debounced FSEvents on macOS, the
+# notify backend elsewhere). Scans run off-thread; the UI only drains a list.
+notify-debouncer-mini = { version = "0.7", features = ["macos_fsevent"] }
+anyhow = { workspace = true }
+# Signed in-app updates: verify the EdDSA signature every release feed and
+# artifact carries, against the key embedded by `build.rs`. The same key
+# verifies the appcast signature on every platform, so the three update
+# paths cannot drift apart.
+ed25519-dalek = "2"
+# Local-time formatting for response-footer timestamps
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# base64 payloads for prompt image attachments
+base64 = "0.22"
+devicons = "0.6"
+# Decode + resize the new-task background before the CPU dither pass — the
+# same `image` gpui already decodes through, so no new crate versions.
+image = "0.25"
+# Remote author avatars rendered by GPUI's image loader. `reqwest` is the
+# same zed-reqwest already in the graph via gpui, so no new crate versions;
+# `futures` provides the BoxFuture/oneshot the HttpClient trait is built on.
+futures = "0.3"
+reqwest = { version = "0.12.15-zed", package = "zed-reqwest", default-features = false, features = [
+    "blocking",
+    "charset",
+    "http2",
+    "macos-system-configuration",
+    # Native roots cover corporate/MITM CAs. webpki-roots is the fallback
+    # when macOS SecTrustSettings is empty (common in a hardened .app),
+    # which otherwise makes GitHub update checks fail while curl still works.
+    "rustls-tls-native-roots",
+    "rustls-tls-webpki-roots",
+] }
+# Parsing/validation for the update feed's download URL (`updater.rs`) and the
+# `termy://` deep link (`platform.rs`). The updater path is compiled on every
+# platform, so this cannot live under the macOS-only target.
+url = "2.5"
+# Terminal emulator + PTY layer (grid, VT/ANSI parsing, openpty). The same
+# Apache-2.0 crate Zed builds its terminal on; default features off
+# because the `serde` feature is unused here.
+alacritty_terminal = { version = "0.26", default-features = false }
+# PTY output/UI-event channels for the terminal session (already in the graph
+# through gpui, so this adds no new transitive dependencies).
+crossbeam-channel = "0.5.17"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Match gpui 0.2.2 so we can set the Dock icon from the embedded PNG
+# when running without a bundled .app (cargo run).
+cocoa = "=0.26.0"
+# Detect installed editors/terminals and open workspace folders in them.
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSBitmapImageRep",
+    # Rasterizing a detected app's icon into a bitmap rep of the exact pixel
+    # size the "open in" menu draws at (`platform::app_icon_png`).
+    "NSGraphics",
+    "NSGraphicsContext",
+    "NSImage",
+    "NSImageRep",
+    "NSSound",
+    "NSWorkspace",
+    "block2",
+    "objc2-core-graphics",
+] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSBundle",
+    "NSDictionary",
+    "NSError",
+    "NSFileManager",
+    "NSLocale",
+    "NSString",
+    "NSURL",
+] }
+# App-attributed notification banners: `UNUserNotificationCenter` is the only
+# supported API — `osascript` banners belong to Script Editor, and the
+# deprecated `NSUserNotification` is not exposed by objc2-app-kit. Same
+# objc2 0.6 / block2 0.6 generation already in the tree. `block2` is a direct
+# dependency here because the authorization/settings calls take blocks.
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationResponse",
+    "UNNotificationSettings",
+    "UNNotificationTrigger",
+    "UNNotification",
+    "UNUserNotificationCenter",
+] }
+block2 = "0.6"
+
+[target.'cfg(unix)'.dependencies]
+# The Unix self-update unpacks a signed `.tar.gz` release beside the running
+# install before swapping it in.
+flate2 = "1"
+tar = "0.4"
+# Probe the parent process's liveness (`kill(pid, 0)`) while the update
+# helper waits for the app to finish quitting before it swaps directories.
+libc = "0.2"
+
+# The app's own window caption on Windows (see `platform::start_window_drag`)
+# needs the window's native handle. Already in the graph through gpui, so this
+# adds no package — it only names the version gpui itself uses.
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
+# Enumerate installed editors/terminals and extract their icons for the
+# header's "open in" menu. Already in the graph through gpui, so this adds no
+# package — it names the version and the Win32 surface (shell, GDI, windows &
+# messaging) the icon extraction needs.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[build-dependencies]
+# Embeds the Windows icon, version metadata, and per-monitor-DPI manifest into
+# `orbit-pi.exe` (see `build.rs`). Already in the dependency graph through
+# gpui, so it pulls in no new packages. A no-op on non-Windows targets.
+embed-resource = "3"
+
+[dev-dependencies]
+gpui = { version = "0.2.2", default-features = false, features = [
+    "font-kit",
+    "runtime_shaders",
+    "test-support",
+    "wayland",
+    "x11",
+] }

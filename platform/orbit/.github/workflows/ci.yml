@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "redesign/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+# GPUI renders through each platform's native graphics API (Metal on macOS,
+# DXGI on Windows, X11/Wayland on Linux), so every change is built on all three
+# shipped platforms. Linux needs the same system libraries the release bundle
+# installs (`scripts/bundle-linux.sh`).
+#
+# The "Protect Main Branch" ruleset requires one status check named `build`.
+# The matrix legs report `build (<os>)`, so the `build` fan-in job below is
+# what reports the required context — and it succeeds only when every
+# platform leg did.
+jobs:
+  check:
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang cmake pkg-config \
+            libfontconfig-dev libvulkan1 \
+            libwayland-dev libx11-xcb-dev libxi-dev libxtst-dev \
+            libxkbcommon-x11-dev libssl-dev
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      # Zero warnings from `cargo build` is a stated project invariant
+      # (AGENT.md → Verification). Tests are no longer run in CI; run them
+      # locally with `cargo test --workspace`.
+      - name: Build
+        run: cargo build --workspace
+
+      # Gating: the workspace is clippy-clean, so a new lint is a regression
+      # rather than noise. One all-targets pass is enough — the per-platform
+      # builds above are the check that the app ships everywhere.
+      - name: Clippy
+        if: runner.os == 'macOS'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # Signing key material must never enter the repository. `.gitignore` covers
+  # the common extensions, but `git add -f` and new key formats do not respect
+  # it, so the tree itself is checked on every push and pull request.
+  keyguard:
+    name: no committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Reject committed key material
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -Ei '\.(pem|key|p12|pfx|jks|keystore)$'; then
+            echo "::error::Signing key material must never be committed. Remove the file above and rotate the key."
+            exit 1
+          fi
+          echo "No committed key material"
+
+  # Rust advisories, independent of GitHub's scheduled Dependabot sweep. This
+  # is what caught quinn-proto, rustls-webpki and webpki-roots, none of which
+  # Dependabot reported. Blocking: the lockfile is clean. It tracks RustSec
+  # only — GHSA-38c5-483c-4qqp (grid) is not in that database.
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Audit dependencies
+        run: cargo audit
+
+  # The required `build` status check. `always()` keeps this context
+  # reporting even when a matrix leg fails or the matrix is cancelled, so
+  # branch protection can never hang on "Expected — Waiting for status to be
+  # reported"; the first step then turns a non-success into a red `build`.
+  build:
+    name: build
+    needs: [check, keyguard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every platform build
+        if: needs.check.result != 'success'
+        run: |
+          echo "::error::the platform build matrix did not pass: ${{ needs.check.result }}"
+          exit 1
+
+      - name: Require no committed key material
+        if: needs.keyguard.result != 'success'
+        run: |
+          echo "::error::the secret guard did not pass: ${{ needs.keyguard.result }}"
+          exit 1
+
+      - name: All platforms built
+        run: echo "macOS, Linux, and Windows builds passed"
