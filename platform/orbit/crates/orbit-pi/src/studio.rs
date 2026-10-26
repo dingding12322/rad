@@ -16,6 +16,12 @@ const OV_ORIGIN: &str = "http://127.0.0.1:1933";
 /// The Studio console SPA.
 pub const STUDIO_URL: &str = "http://127.0.0.1:1933/studio/";
 
+// WKWebView's classes live in WebKit; nothing else in the graph links it, so
+// `objc_getClass` would come up empty without this.
+#[cfg(target_os = "macos")]
+#[link(name = "WebKit", kind = "framework")]
+extern "C" {}
+
 /// The `localStorage` key the Studio frontend reads its API key from.
 const STUDIO_KEY_STORE: &str = "ov_console_api_key";
 
@@ -83,6 +89,16 @@ fn open_webview_window(url: &str) -> Result<(), String> {
     const SIZE_TO_FIT_PARENT: usize = 2 | 16;
     // WKUserScriptInjectionTimeAtDocumentStart.
     const INJECT_AT_DOCUMENT_START: isize = 0;
+    // Window and webview frames, prebuilt: objc2's msg_send splits arguments
+    // on top-level commas, so keep struct literals out of the invocation.
+    let window_frame = NSRect {
+        origin: NSPoint { x: 120.0, y: 120.0 },
+        size: NSSize { width: 1200.0, height: 820.0 },
+    };
+    let webview_frame = NSRect {
+        origin: NSPoint { x: 0.0, y: 0.0 },
+        size: NSSize { width: 1200.0, height: 820.0 },
+    };
 
     unsafe {
         let release = |obj: *mut AnyObject| {
@@ -105,10 +121,7 @@ fn open_webview_window(url: &str) -> Result<(), String> {
 
         let window: *mut AnyObject = msg_send![class!(NSWindow), alloc];
         let window: *mut AnyObject = msg_send![window,
-            initWithContentRect: NSRect {
-                origin: NSPoint { x: 120.0, y: 120.0 },
-                size: NSSize { width: 1200.0, height: 820.0 },
-            },
+            initWithContentRect: window_frame,
             styleMask: STYLE_MASK,
             backing: BACKING_BUFFERED,
             defer: objc2::runtime::Bool::NO,
@@ -145,7 +158,17 @@ fn open_webview_window(url: &str) -> Result<(), String> {
             ];
             release(source);
             if !user_script.is_null() {
-                let _: () = msg_send![configuration, addUserScript: user_script];
+                // `addUserScript:` lives on WKUserContentController, not on
+                // the configuration; the controller is attached via
+                // `setUserContentController:`.
+                let controller: *mut AnyObject =
+                    msg_send![class!(WKUserContentController), alloc];
+                let controller: *mut AnyObject = msg_send![controller, init];
+                if !controller.is_null() {
+                    let _: () = msg_send![controller, addUserScript: user_script];
+                    let _: () = msg_send![configuration, setUserContentController: controller];
+                    release(controller);
+                }
                 release(user_script);
             }
         }
@@ -153,10 +176,7 @@ fn open_webview_window(url: &str) -> Result<(), String> {
         let content_view: *mut AnyObject = msg_send![window, contentView];
         let webview: *mut AnyObject = msg_send![class!(WKWebView), alloc];
         let webview: *mut AnyObject = msg_send![webview,
-            initWithFrame: NSRect {
-                origin: NSPoint { x: 0.0, y: 0.0 },
-                size: NSSize { width: 1200.0, height: 820.0 },
-            },
+            initWithFrame: webview_frame,
             configuration: configuration,
         ];
         release(configuration);
