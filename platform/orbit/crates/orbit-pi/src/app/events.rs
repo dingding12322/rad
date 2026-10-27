@@ -15,6 +15,31 @@ struct ParkedDrain {
 impl OrbitApp {
     /// Heartbeat (~90ms): drain protocol events into the UI. Returns whether a
     /// run is in flight so the caller can repaint faster while tokens stream.
+    /// Every 30 minutes: fire-and-forget `rad --archive-scan`. The harness
+    /// extension does the real work (OV commit of 48h-idle sessions, 30-day
+    /// archive retirement); Orbit only keeps the cadence alive while it runs.
+    fn tick_archive_scan(&mut self) {
+        const ARCHIVE_SCAN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+        let now = std::time::Instant::now();
+        let due = match self.archive_scan_at {
+            Some(at) => now >= at,
+            None => true,
+        };
+        if !due {
+            return;
+        }
+        self.archive_scan_at = Some(now + ARCHIVE_SCAN_INTERVAL);
+        let bin = orbit_rpc::pi_binary();
+        std::thread::spawn(move || {
+            let _ = std::process::Command::new(&bin)
+                .arg("--archive-scan")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+        });
+    }
+
     pub(crate) fn tick(&mut self, cx: &mut Context<Self>) -> bool {
         // Let a lapsed status message disappear from the status bar.
         if self
@@ -41,6 +66,10 @@ impl OrbitApp {
         // Session retention: once per launch, archive or delete sessions the
         // user's policy marks idle. A no-op until enabled in Settings.
         self.run_session_retention_once(cx);
+        // Harness archive scan: every 30 minutes, commit idle sessions to
+        // OpenViking and retire stale archives (the harness extension also
+        // scans on each session start; this covers long-lived Orbit runs).
+        self.tick_archive_scan();
         self.tick_background(cx);
         // MCP: external-change detection, the debounced `pi mcp list` probe,
         // and a deferred restart that applies new server configuration while

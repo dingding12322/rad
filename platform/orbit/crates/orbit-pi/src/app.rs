@@ -281,6 +281,10 @@ pub struct OrbitApp {
     retention: crate::session_retention::RetentionConfig,
     /// One-shot latch: the launch retention pass must run exactly once.
     retention_ran: bool,
+    /// Next scheduled harness archive scan (`rad --archive-scan`: OV commit
+    /// of idle sessions + 30-day retirement of their archive dirs). None
+    /// until the first tick arms the 30-minute cadence.
+    archive_scan_at: Option<std::time::Instant>,
     /// Settings → Privacy: Orbit's scratch files in the system temp folder.
     /// Refreshed when the page opens and after a cleanup, so rendering never
     /// touches the filesystem.
@@ -1571,6 +1575,7 @@ impl OrbitApp {
             auto_title: crate::auto_title::AutoTitleConfig::load(),
             retention: crate::session_retention::RetentionConfig::load(),
             retention_ran: false,
+            archive_scan_at: None,
             temp_files: crate::temp_files::TempFiles::default(),
             session_name: None,
             is_compacting: false,
