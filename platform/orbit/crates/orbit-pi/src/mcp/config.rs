@@ -1274,6 +1274,7 @@ mod tests {
     fn merge_lets_project_override_global() {
         let dir = temp_dir("merge");
         let home = home(&dir);
+        crate::mcp::test_support::pin_agent_dir_to_default(&home);
         let workspace = dir.join("project");
         fs::create_dir_all(workspace.join(".pi")).unwrap();
         let global = McpScope::Global.config_path(&home, None).unwrap();

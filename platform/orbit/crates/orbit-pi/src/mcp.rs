@@ -55,14 +55,37 @@ impl McpScope {
         }
     }
 
-    /// `~/.pi/agent/mcp.json` for global, `<workspace>/.pi/mcp.json` for the
+    /// The harness's global `mcp.json` (follows `orbit_rpc::agent_dir()`, so a
+    /// renamed harness's store is read), `<workspace>/.pi/mcp.json` for the
     /// active project. `None` for a project scope with no workspace — the
     /// caller must resolve one before writing.
     pub(crate) fn config_path(self, home: &Path, workspace: Option<&Path>) -> Option<PathBuf> {
         match self {
-            Self::Global => Some(home.join(".pi").join("agent").join("mcp.json")),
+            Self::Global => Some(orbit_rpc::agent_dir_in(home).join("mcp.json")),
             Self::Project => workspace.map(|dir| dir.join(".pi").join("mcp.json")),
         }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use std::{fs, path::Path};
+
+    /// Pin the harness override for `home` back to `home/.pi/agent` so tests
+    /// driving an explicit temp home keep working now that the global MCP
+    /// path resolves through `orbit_rpc::agent_dir()` (which honours the
+    /// override and the real pi package's configDir).
+    pub(crate) fn pin_agent_dir_to_default(home: &Path) {
+        let dir = home.join(".orbit-pi");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("agent-dir.json"),
+            format!(
+                "{{\"agentDir\":\"{}\"}}",
+                home.join(".pi").join("agent").display()
+            ),
+        )
+        .unwrap();
     }
 }
 
@@ -491,16 +514,25 @@ mod tests {
 
     #[test]
     fn scope_paths_match_pi() {
-        let home = Path::new("/home/u");
+        let dir = std::env::temp_dir().join(format!(
+            "orbit-mcp-scope-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let home = dir.join("home");
+        test_support::pin_agent_dir_to_default(&home);
         assert_eq!(
-            McpScope::Global.config_path(home, None),
-            Some(PathBuf::from("/home/u/.pi/agent/mcp.json"))
+            McpScope::Global.config_path(&home, None),
+            Some(home.join(".pi").join("agent").join("mcp.json"))
         );
         assert_eq!(
-            McpScope::Project.config_path(home, Some(Path::new("/work/p"))),
+            McpScope::Project.config_path(&home, Some(Path::new("/work/p"))),
             Some(PathBuf::from("/work/p/.pi/mcp.json"))
         );
-        assert_eq!(McpScope::Project.config_path(home, None), None);
+        assert_eq!(McpScope::Project.config_path(&home, None), None);
     }
 
     #[test]

@@ -861,36 +861,41 @@ fn home_dir() -> Option<PathBuf> {
 /// `configDir: ".rad"`), then `<home>/<configDir>/agent` derived from the pi
 /// package's `package.json`, then the official `~/.pi/agent`.
 pub fn agent_dir() -> PathBuf {
-    static AGENT_DIR: OnceLock<PathBuf> = OnceLock::new();
-    AGENT_DIR.get_or_init(|| {
-        let home = home_dir().unwrap_or_else(|| PathBuf::from("."));
-        if let Ok(text) = fs::read_to_string(home.join(".orbit-pi/agent-dir.json")) {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                if let Some(dir) = value.get("agentDir").and_then(serde_json::Value::as_str) {
+    agent_dir_in(&home_dir().unwrap_or_else(|| PathBuf::from(".")))
+}
+
+/// [`agent_dir`] for an explicit home — the seam tests and per-home callers
+/// use. Resolution order matches [`agent_dir`]: the `~/.orbit-pi/agent-dir.json`
+/// override under `home`, then `<home>/<piConfig.configDir>/agent` from the pi
+/// package manifest, then the official `<home>/.pi/agent`. Not cached: every
+/// step is a tiny file read and a cached value would leak one home into
+/// another across `load_in`-style test or multi-home callers.
+pub fn agent_dir_in(home: &Path) -> PathBuf {
+    if let Ok(text) = fs::read_to_string(home.join(".orbit-pi/agent-dir.json")) {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+            if let Some(dir) = value.get("agentDir").and_then(serde_json::Value::as_str) {
+                if !dir.is_empty() {
+                    return PathBuf::from(dir);
+                }
+            }
+        }
+    }
+    if let Ok(root) = pi_package_root() {
+        if let Ok(manifest) = fs::read_to_string(root.join("package.json")) {
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&manifest) {
+                if let Some(dir) = value
+                    .get("piConfig")
+                    .and_then(|v| v.get("configDir"))
+                    .and_then(serde_json::Value::as_str)
+                {
                     if !dir.is_empty() {
-                        return PathBuf::from(dir);
+                        return home.join(dir).join("agent");
                     }
                 }
             }
         }
-        if let Ok(root) = pi_package_root() {
-            if let Ok(manifest) = fs::read_to_string(root.join("package.json")) {
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&manifest) {
-                    if let Some(dir) = value
-                        .get("piConfig")
-                        .and_then(|v| v.get("configDir"))
-                        .and_then(serde_json::Value::as_str)
-                    {
-                        if !dir.is_empty() {
-                            return home.join(dir).join("agent");
-                        }
-                    }
-                }
-            }
-        }
-        home.join(".pi").join("agent")
-    })
-    .clone()
+    }
+    home.join(".pi").join("agent")
 }
 
 /// The PATH handed to a pi child: the resolved binary's dir plus common

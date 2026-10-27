@@ -13,8 +13,8 @@ pub mod client;
 pub mod types;
 
 pub use client::{
-    augmented_path, hide_console, agent_dir, pi_bin_candidates, pi_binary, pi_package_root,
-    pi_package_root_from, PiClient, PI_BIN_ENV, PI_PACKAGE_ROOT_ENV,
+    augmented_path, hide_console, agent_dir, agent_dir_in, pi_bin_candidates, pi_binary,
+    pi_package_root, pi_package_root_from, PiClient, PI_BIN_ENV, PI_PACKAGE_ROOT_ENV,
 };
 pub use types::{
     is_auth_event, parse_quota_reports, AssistantMessageEvent, AuthErrorCode, AuthEvent,

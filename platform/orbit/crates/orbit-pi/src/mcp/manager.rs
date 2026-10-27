@@ -109,7 +109,7 @@ impl McpManager {
         let mut manager = Self {
             home: home.to_path_buf(),
             workspace: workspace.map(Path::to_path_buf),
-            global_path: home.join(".pi").join("agent").join("mcp.json"),
+            global_path: orbit_rpc::agent_dir_in(home).join("mcp.json"),
             project_path: None,
             servers: Vec::new(),
             runtime: HashMap::new(),
@@ -1029,6 +1029,7 @@ mod tests {
         let home = root.join("home");
         let workspace = root.join("project");
         fs::create_dir_all(&workspace).unwrap();
+        crate::mcp::test_support::pin_agent_dir_to_default(&home);
         let manager = McpManager::load_in(&home, Some(&workspace));
         (home, workspace, manager)
     }

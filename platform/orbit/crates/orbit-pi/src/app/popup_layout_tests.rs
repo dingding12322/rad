@@ -941,6 +941,7 @@ fn quota_popup_mcp_tab_swaps_the_pane(cx: &mut gpui::TestAppContext) {
     let home = root.join("home");
     let workspace = root.join("project");
     fs::create_dir_all(home.join(".pi").join("agent")).unwrap();
+    crate::mcp::test_support::pin_agent_dir_to_default(&home);
     fs::create_dir_all(&workspace).unwrap();
     fs::write(
         home.join(".pi").join("agent").join("mcp.json"),
