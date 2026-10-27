@@ -47,13 +47,14 @@ OpenViking server (Python, uv)    → http://127.0.0.1:1933；Web 控制台 /stu
 - Orbit：`cd platform/orbit && cargo build --release`；测试
   `cargo test -p orbit-pi --release`（1076 项，i18n 覆盖测试要求 12 个
   locales 全部含 en 的每个 key）。
-- **替换 /Applications 的 Orbit 二进制（标准流程，缺一必炸）**：
-  ```bash
-  killall orbit-pi                                   # 1. 先停（覆盖运行中二进制=签名失效闪退）
-  cp target/release/orbit-pi "/Applications/Orbit Pi.app/Contents/MacOS/orbit-pi"
-  codesign --force --deep -s - "/Applications/Orbit Pi.app"   # 2. 后签（cp 后 hash 不匹配，Gatekeeper 会 kill）
-  ```
-  重签后首次启动有 Gatekeeper 全量校验卡顿，属正常一次性成本。
+- **Orbit 开发/生产隔离与生产晋升**：
+  - dev 形态：直接运行 `platform/orbit/target/release/orbit-pi`（不碰生产
+    App）；需数据隔离时 `ORBIT_STATE_HOME=~/.orbit-pi-dev` 启动。
+  - AI 约束：**构建与 dev 冒烟通过后停在 promote 前**——替换生产 App 必须由
+    用户确认后执行 `platform/scripts/promote.sh`（自动备份旧版 → 停实例 →
+    替换 → 重签 → 验签失败自动回滚）；禁止手工 cp/codesign 绕过脚本。
+  - 回滚：`platform/scripts/rollback.sh`（恢复最近备份）。
+  - 重签后首次启动有 Gatekeeper 全量校验卡顿，属正常一次性成本。
 
 ## 已知坑（勿重蹈）
 
