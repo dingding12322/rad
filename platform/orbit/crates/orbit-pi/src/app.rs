@@ -2426,13 +2426,23 @@ impl SidebarArchivedFilter {
     }
 }
 
+/// Orbit's state directory: `ORBIT_STATE_HOME` when set (tests pin this to a
+/// scratch dir so parked-session fixtures never touch the user's real
+/// `~/.orbit-pi`), else the standard `~/.orbit-pi`.
+fn orbit_state_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("ORBIT_STATE_HOME") {
+        if !dir.is_empty() {
+            return PathBuf::from(dir);
+        }
+    }
+    crate::platform::home_dir().join(".orbit-pi")
+}
+
 /// `~/.orbit-pi/workspaces.json` — the folders Orbit lists in its sidebar,
 /// when each was added, and how the sidebar orders them. Orbit-owned: pi owns
 /// the session files, this only records which projects the user added.
 fn workspaces_path() -> PathBuf {
-    crate::platform::home_dir()
-        .join(".orbit-pi")
-        .join("workspaces.json")
+    orbit_state_dir().join("workspaces.json")
 }
 
 /// The parsed workspaces store. Keeping `added_at` beside the path list gives
@@ -2596,9 +2606,7 @@ fn persist_workspace_store(store: &WorkspaceStore) {
 /// new-task page restores this instead of showing `/`. Orbit-owned, like the
 /// workspaces list.
 fn last_workspace_path() -> PathBuf {
-    crate::platform::home_dir()
-        .join(".orbit-pi")
-        .join("last-workspace.json")
+    orbit_state_dir().join("last-workspace.json")
 }
 
 /// The remembered folder, if the store is readable and the folder still

@@ -71,6 +71,16 @@ impl Drop for FakePi {
 }
 
 fn test_app(cx: &mut gpui::TestAppContext) -> Entity<OrbitApp> {
+    // Park fixtures register their /tmp workspace in the sidebar store; point
+    // Orbit's state dir at a scratch home so the user's real ~/.orbit-pi
+    // (workspaces.json, last-workspace.json) is never written. Once per test
+    // process: gpui runs these in one binary and the env is process-global.
+    static STATE_HOME: std::sync::Once = std::sync::Once::new();
+    STATE_HOME.call_once(|| {
+        let dir = std::env::temp_dir().join(format!("orbit-test-state-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("ORBIT_STATE_HOME", &dir);
+    });
     cx.update(|cx| {
         cx.set_global(Theme::for_id(ThemeId::Orbit));
         cx.new(OrbitApp::new)
