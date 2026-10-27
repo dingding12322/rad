@@ -44,13 +44,20 @@ rad/
       全部跟随 `~/.rad/agent`，凭证写读同源）
 - [x] OpenViking 接入：MCP 15 工具直连 + Studio 原生 WKWebView 窗口
       （Settings→About 入口，key 自动注入 `ov_console_connection`）
-- [x] 会话自动归档 + OV 提炼（`.rad/extensions/archive.ts`：先 OV commit
+- [x] 会话自动归档 + OV 提炼（`platform/extensions/ov.ts`：先 OV commit
       提炼、后归档工件+manifest；48h 自动归档、30d 退役、映射可恢复；
       Orbit 每 30min spawn `rad --archive-scan` 保持常驻节奏）
+- [x] OV 记忆召回（ov.ts 读路径）：session-start 偏好索引+相关记忆注入、
+      每轮 recall（同 query 去重）、系统提示附加已索引资源段、
+      viking:// URI 守卫（非 OV 工具访问即拦截）
+- [x] 扩展全局化：`platform/extensions/sync.sh` 同步 ov.ts 到
+      `~/.rad/agent/extensions/`（所有 cwd 生效；改源后需重跑 sync）
+- [x] rad MCP：openviking（15 工具）+ rea（170 工具）
+- [x] `platform/setup/bootstrap.sh`：17 项环境幂等检查 + 引导
 - [x] 模型上下文统一 476K（`~/.rad/agent/models.json` modelOverrides）
-- [ ] platform/setup 一键还原脚本
-- [ ] archive 扩展全局化（当前为项目级：rad 仓库 cwd 的会话生效；
-      全局需放 `~/.rad/agent/extensions/` 并保持与仓库副本同步）
+- [ ] platform/setup 一键还原（bootstrap.sh 已做检查+引导；自动安装待做）
+- [ ] ov.ts 增量保全：目前压缩前/结束各一次全量提炼；逐 turn 增量
+      batch（崩溃零丢失）待做
 
 AI agent 进入项目请先读根目录 `AI.md`（运行时拓扑、红线、构建验证、已知坑）。
 - [ ] Rust 工具链引导（orbit 本地构建前提）
