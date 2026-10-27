@@ -885,7 +885,10 @@ impl OrbitApp {
             ),
             SettingsSection::Providers => (
                 tr!("settings.providers"),
-                tr!("settings.providers_description"),
+                tr!(
+                    "settings.providers_description",
+                    path = crate::providers::models_json_path().display().to_string()
+                ),
             ),
             SettingsSection::Shortcuts => (
                 tr!("settings.shortcuts"),
@@ -4159,7 +4162,10 @@ impl OrbitApp {
         let subtitle = if editing && editor.in_catalog && !is_custom_entry {
             tr!("settings.builtin_provider_hint")
         } else {
-            tr!("settings.saved_to_models_json")
+            tr!(
+                "settings.saved_to_models_json",
+                path = crate::providers::models_json_path().display().to_string()
+            )
         };
 
         let field = |label: &str, hint: Option<&str>, input: Entity<ComposerInput>| -> AnyElement {
