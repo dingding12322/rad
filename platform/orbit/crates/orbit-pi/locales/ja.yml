@@ -2052,3 +2052,9 @@ settings.openviking_unreachable: "OpenViking サーバー（127.0.0.1:1933）に
 studio.window_failed: "Studio ウィンドウを作成できませんでした。"
 studio.invalid_utf8: "Studio の設定に無効なテキストが含まれています。"
 studio.native_window_unsupported: "この環境ではネイティブの Studio ウィンドウに対応していないため、ブラウザで開きます。"
+
+settings.import_ccswitch: "CCSwitch OpenAI をインポート"
+settings.ccswitch_imported: "CCSwitch OpenAI プロバイダを %{imported} 件インポートし、%{skipped} 件をスキップしました"
+providers.ccswitch_home_missing: "CCSwitch のホームディレクトリが見つかりません。"
+providers.ccswitch_database_missing: "%{path} に CCSwitch データベースが見つかりません。"
+providers.ccswitch_read_failed: "CCSwitch プロバイダを読み込めませんでした: %{error}"

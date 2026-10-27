@@ -2052,3 +2052,9 @@ settings.openviking_unreachable: "O servidor OpenViking não está acessível em
 studio.window_failed: "Não foi possível criar a janela do Studio."
 studio.invalid_utf8: "Uma configuração do Studio contém texto inválido."
 studio.native_window_unsupported: "Janelas nativas do Studio não são suportadas aqui; abrindo no navegador."
+
+settings.import_ccswitch: "Importar CCSwitch OpenAI"
+settings.ccswitch_imported: "%{imported} provedor(es) CCSwitch OpenAI importados; %{skipped} ignorados"
+providers.ccswitch_home_missing: "Diretório home do CCSwitch não encontrado."
+providers.ccswitch_database_missing: "Banco de dados do CCSwitch não encontrado em %{path}."
+providers.ccswitch_read_failed: "Não foi possível ler os provedores do CCSwitch: %{error}"

@@ -2051,3 +2051,9 @@ settings.openviking_unreachable: "OpenViking 服务不可达（127.0.0.1:1933）
 studio.window_failed: "无法创建 Studio 窗口。"
 studio.invalid_utf8: "Studio 配置包含无效文本。"
 studio.native_window_unsupported: "当前平台不支持原生 Studio 窗口，改用浏览器打开。"
+
+settings.import_ccswitch: "导入 CCSwitch OpenAI"
+settings.ccswitch_imported: "已导入 %{imported} 个 CCSwitch OpenAI 供应商；跳过 %{skipped} 个"
+providers.ccswitch_home_missing: "未找到 CCSwitch 的主目录。"
+providers.ccswitch_database_missing: "在 %{path} 未找到 CCSwitch 数据库。"
+providers.ccswitch_read_failed: "读取 CCSwitch 供应商失败：%{error}"

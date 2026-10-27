@@ -2052,3 +2052,9 @@ settings.openviking_unreachable: "OpenViking-Server ist nicht erreichbar unter 1
 studio.window_failed: "Studio-Fenster konnte nicht erstellt werden."
 studio.invalid_utf8: "Eine Studio-Einstellung enthält ungültigen Text."
 studio.native_window_unsupported: "Native Studio-Fenster werden hier nicht unterstützt; der Browser wird geöffnet."
+
+settings.import_ccswitch: "CCSwitch OpenAI importieren"
+settings.ccswitch_imported: "%{imported} CCSwitch-OpenAI-Anbieter importiert; %{skipped} übersprungen"
+providers.ccswitch_home_missing: "Home-Verzeichnis für CCSwitch nicht gefunden."
+providers.ccswitch_database_missing: "CCSwitch-Datenbank nicht gefunden unter %{path}."
+providers.ccswitch_read_failed: "CCSwitch-Anbieter konnten nicht gelesen werden: %{error}"

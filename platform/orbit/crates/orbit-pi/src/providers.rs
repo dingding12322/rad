@@ -130,6 +130,314 @@ pub(crate) fn write_provider(
     )
 }
 
+/// Import CCSwitch's OpenAI/Codex providers into pi's shared provider files.
+/// CCSwitch keeps the provider payload in SQLite; using its read-only CLI
+/// export avoids a new database dependency while keeping secrets out of logs.
+pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .ok_or_else(|| tr!("providers.ccswitch_home_missing"))?;
+    let database = home.join(".cc-switch").join("cc-switch.db");
+    if !database.is_file() {
+        return Err(tr!(
+            "providers.ccswitch_database_missing",
+            path = database.display().to_string()
+        ));
+    }
+    let output = std::process::Command::new("sqlite3")
+        .arg("-json")
+        .arg(&database)
+        .arg("SELECT p.app_type, p.id, p.name, p.settings_config, (SELECT e.url FROM provider_endpoints e WHERE e.provider_id = p.id AND e.app_type = p.app_type LIMIT 1) AS endpoint_url FROM providers p WHERE p.app_type = 'codex' ORDER BY p.name, p.id;")
+        .output()
+        .map_err(|err| tr!("providers.ccswitch_read_failed", error = err))?;
+    if !output.status.success() {
+        return Err(tr!("providers.ccswitch_read_failed", error = "sqlite3 exited with an error"));
+    }
+    let rows: Vec<Value> = serde_json::from_slice(&output.stdout)
+        .map_err(|err| tr!("providers.ccswitch_read_failed", error = err))?;
+
+    // Earlier builds imported every app_type and guessed endpoints from the
+    // vendor homepage; drop those leftovers so only the current codex pass
+    // remains.
+    ccswitch_remove_stale()?;
+
+    let mut imported = 0;
+    let mut skipped = 0;
+    for row in rows {
+        let Some(source_id) = row.get("id").and_then(Value::as_str) else {
+            skipped += 1;
+            continue;
+        };
+        let config = row
+            .get("settings_config")
+            .and_then(Value::as_str)
+            .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+            .unwrap_or(Value::Null);
+        let endpoint_url = row.get("endpoint_url").and_then(Value::as_str);
+        let Some((api, base_url, api_key)) = ccswitch_mapping(&config, endpoint_url) else {
+            skipped += 1;
+            continue;
+        };
+        let model_ids = ccswitch_models(&config, &base_url, api_key.as_deref());
+        if model_ids.is_empty() {
+            skipped += 1;
+            continue;
+        }
+        let id = ccswitch_provider_id(source_id, "codex");
+        write_provider(
+            &id,
+            row.get("name").and_then(Value::as_str),
+            &base_url,
+            api,
+            None,
+            &model_ids,
+        )?;
+        if let Some(key) = api_key {
+            write_api_key(&id, &key)?;
+        }
+        // The Codex TOML carries the context window for its current model;
+        // apply it so context estimates are not stuck on the catalog default.
+        let config_text = config.get("config").and_then(Value::as_str).unwrap_or("");
+        if let Some(window) = ccswitch_toml_u64(config_text, "model_context_window") {
+            let current = ccswitch_toml_str(config_text, "model").unwrap_or_default();
+            set_model_context_window(&id, current, window);
+        }
+        imported += 1;
+    }
+    Ok((imported, skipped))
+}
+
+/// Remove providers this import no longer manages: earlier builds also wrote
+/// `ccswitch-claude-*` / `ccswitch-gemini-*` entries from the same CCSwitch
+/// database, and the user scoped the import to Codex relays only.
+fn ccswitch_remove_stale() -> Result<(), String> {
+    ccswitch_remove_stale_at(&models_json_path(), &auth_path())
+}
+
+fn ccswitch_remove_stale_at(models_path: &Path, auth_path: &Path) -> Result<(), String> {
+    const STALE_PREFIXES: [&str; 2] = ["ccswitch-claude-", "ccswitch-gemini-"];
+    if let Ok(raw) = std::fs::read_to_string(models_path) {
+        if let Ok(mut root) = serde_json::from_str::<Value>(&raw) {
+            let mut changed = false;
+            if let Some(providers) = root.get_mut("providers").and_then(Value::as_object_mut) {
+                let stale: Vec<String> = providers
+                    .keys()
+                    .filter(|id| STALE_PREFIXES.iter().any(|prefix| id.starts_with(prefix)))
+                    .cloned()
+                    .collect();
+                for id in stale {
+                    providers.remove(&id);
+                    changed = true;
+                }
+            }
+            if changed {
+                write_json_secure(models_path, &root)?;
+            }
+        }
+    }
+    if let Ok(raw) = std::fs::read_to_string(auth_path) {
+        if let Ok(mut root) = serde_json::from_str::<Value>(&raw) {
+            let mut changed = false;
+            if let Some(entries) = root.as_object_mut() {
+                let stale: Vec<String> = entries
+                    .keys()
+                    .filter(|id| STALE_PREFIXES.iter().any(|prefix| id.starts_with(prefix)))
+                    .cloned()
+                    .collect();
+                for id in stale {
+                    entries.remove(&id);
+                    changed = true;
+                }
+            }
+            if changed {
+                write_json_secure(auth_path, &root)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Point one imported model at the context window its Codex config declared.
+fn set_model_context_window(id: &str, model_id: &str, window: u64) {
+    if model_id.is_empty() {
+        return;
+    }
+    let path = models_json_path();
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(mut root) = serde_json::from_str::<Value>(&raw) else {
+        return;
+    };
+    let Some(models) = root
+        .get_mut("providers")
+        .and_then(|providers| providers.get_mut(id))
+        .and_then(|provider| provider.get_mut("models"))
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for model in models {
+        if model.get("id").and_then(Value::as_str) == Some(model_id) {
+            if let Some(entry) = model.as_object_mut() {
+                entry.insert("contextWindow".into(), Value::from(window));
+            }
+            break;
+        }
+    }
+    let _ = write_json_secure(&path, &root);
+}
+
+/// The provider's model list: every model the relay exposes via
+/// `GET {base_url}/models`, with the model the Codex config currently
+/// selects pinned to the front (the relay list may not contain it verbatim).
+/// Falls back to just the configured model when the relay does not answer.
+fn ccswitch_models(config: &Value, base_url: &str, api_key: Option<&str>) -> Vec<String> {
+    let config_text = config.get("config").and_then(Value::as_str).unwrap_or("");
+    let mut models = Vec::new();
+    let mut add = |value: &str| {
+        let value = value.trim();
+        if !value.is_empty() && !models.iter().any(|model| model == value) {
+            models.push(value.to_string());
+        }
+    };
+    add(ccswitch_toml_str(config_text, "model").unwrap_or_default());
+    if let Some(key) = api_key {
+        for id in ccswitch_relay_model_ids(base_url, key) {
+            add(&id);
+        }
+    }
+    models
+}
+
+/// `GET {base_url}/models` on the OpenAI-compatible relay. Best-effort: a
+/// relay that is offline or non-standard simply contributes no models.
+fn ccswitch_relay_model_ids(base_url: &str, api_key: &str) -> Vec<String> {
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+    {
+        Ok(client) => client,
+        Err(_) => return Vec::new(),
+    };
+    let response = match client.get(url).bearer_auth(api_key).send() {
+        Ok(response) => response,
+        Err(_) => return Vec::new(),
+    };
+    if !response.status().is_success() {
+        return Vec::new();
+    }
+    let text = match response.text() {
+        Ok(text) => text,
+        Err(_) => return Vec::new(),
+    };
+    let body: Value = match serde_json::from_str(&text) {
+        Ok(body) => body,
+        Err(_) => return Vec::new(),
+    };
+    let mut ids = Vec::new();
+    if let Some(entries) = body.get("data").and_then(Value::as_array) {
+        for entry in entries {
+            if let Some(id) = entry.get("id").and_then(Value::as_str) {
+                ids.push(id.to_string());
+            }
+        }
+    }
+    ids
+}
+
+fn ccswitch_provider_id(source_id: &str, app_type: &str) -> String {
+    let id = source_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '-' })
+        .collect::<String>();
+    format!(
+        "ccswitch-{app_type}-{}",
+        if id.is_empty() { "provider" } else { &id }
+    )
+}
+
+/// Resolve one CCSwitch Codex relay into (api, base_url, api_key).
+///
+/// The Codex config TOML names a provider (`model_provider = "timi_cc"`) and
+/// carries its real endpoint in `[model_providers.timi_cc]`: `base_url` plus
+/// `wire_api` ("responses" or "chat"). Relays authenticated with ChatGPT
+/// OAuth instead of an API key are skipped — pi cannot reuse those tokens as
+/// a plain API key.
+fn ccswitch_mapping(
+    config: &Value,
+    endpoint_url: Option<&str>,
+) -> Option<(&'static str, String, Option<String>)> {
+    let config_text = config.get("config").and_then(Value::as_str)?;
+    let nested_auth = ccswitch_value(config.get("auth"));
+    let api_key = nested_auth
+        .as_ref()
+        .and_then(|auth| auth.get("OPENAI_API_KEY"))
+        .and_then(Value::as_str)
+        .map(str::to_string)?;
+
+    let model_provider = ccswitch_toml_str(config_text, "model_provider")?;
+    let section = ccswitch_toml_section(config_text, model_provider)?;
+    let base_url = ccswitch_toml_str(section, "base_url")
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            endpoint_url
+                .map(str::trim)
+                .filter(|url| !url.is_empty())
+                .map(str::to_string)
+        })?;
+    let api = match ccswitch_toml_str(section, "wire_api") {
+        Some("chat") => "openai-completions",
+        _ => "openai-responses",
+    };
+    Some((api, base_url, Some(api_key)))
+}
+
+/// The body of `[model_providers.<section>]` in a Codex config TOML, up to
+/// the next table header.
+fn ccswitch_toml_section<'a>(raw: &'a str, section: &str) -> Option<&'a str> {
+    let header = format!("[model_providers.{section}]");
+    let start = raw.find(&header)? + header.len();
+    let rest = &raw[start..];
+    let end = rest.find("\n[").unwrap_or(rest.len());
+    Some(rest[..end].trim())
+}
+
+/// `key = "value"` inside a TOML fragment (first match wins).
+fn ccswitch_toml_str<'a>(raw: &'a str, key: &str) -> Option<&'a str> {
+    let needle = format!("{key} = \"");
+    let start = raw.find(&needle)? + needle.len();
+    let rest = &raw[start..];
+    Some(&rest[..rest.find('"')?])
+}
+
+/// `key = 123` inside a TOML fragment (first match wins).
+fn ccswitch_toml_u64(raw: &str, key: &str) -> Option<u64> {
+    for line in raw.lines() {
+        let Some(rest) = line.trim().strip_prefix(key) else {
+            continue;
+        };
+        let rest = rest.trim_start().strip_prefix('=')?.trim_start();
+        let digits = rest.split(|c: char| !c.is_ascii_digit()).next()?;
+        if !digits.is_empty() {
+            return digits.parse().ok();
+        }
+    }
+    None
+}
+
+fn ccswitch_value(value: Option<&Value>) -> Option<Value> {
+    match value {
+        Some(Value::Object(object)) => Some(Value::Object(object.clone())),
+        Some(Value::String(raw)) => serde_json::from_str(raw).ok(),
+        _ => None,
+    }
+}
+
 fn write_provider_at(
     path: &Path,
     id: &str,
@@ -965,6 +1273,68 @@ pub(crate) fn provider_brand(provider: &str) -> Option<(u32, u32)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_codex_toml_provider_section() {
+        let config_text = "model = \"gpt-5.6-sol\"\nmodel_provider = \"timi_cc\"\nmodel_context_window = 200000\n\n[model_providers.timi_cc]\nbase_url = \"https://api.78code.cc/v1\"\nwire_api = \"responses\"\nmodel_reasoning_effort = \"high\"\n\n[features]\nmemories = false\n";
+        assert_eq!(ccswitch_toml_str(config_text, "model_provider"), Some("timi_cc"));
+        assert_eq!(ccswitch_toml_u64(config_text, "model_context_window"), Some(200000));
+        let section = ccswitch_toml_section(config_text, "timi_cc").unwrap();
+        assert_eq!(ccswitch_toml_str(section, "base_url"), Some("https://api.78code.cc/v1"));
+        assert_eq!(ccswitch_toml_str(section, "wire_api"), Some("responses"));
+        // The next table header terminates the section: no bleed-through.
+        assert_eq!(ccswitch_toml_str(section, "memories"), None);
+    }
+
+    #[test]
+    fn maps_codex_relay_from_model_provider_section() {
+        let config = serde_json::json!({
+            "auth": { "OPENAI_API_KEY": "sk-test", "auth_mode": "apikey" },
+            "config": "model = \"gpt-5.6-sol\"\nmodel_provider = \"relay\"\n\n[model_providers.relay]\nbase_url = \"https://api.relay.test/v1\"\nwire_api = \"responses\"\n"
+        });
+        let (api, base_url, key) = ccswitch_mapping(&config, Some("https://vendor.homepage.test")).unwrap();
+        assert_eq!(api, "openai-responses");
+        // The section endpoint wins over the vendor-homepage fallback.
+        assert_eq!(base_url, "https://api.relay.test/v1");
+        assert_eq!(key.as_deref(), Some("sk-test"));
+    }
+
+    #[test]
+    fn skips_chatgpt_oauth_entries_without_an_api_key() {
+        let config = serde_json::json!({
+            "auth": { "auth_mode": "chatgpt" },
+            "config": "model = \"gpt-5.6\"\n"
+        });
+        assert!(ccswitch_mapping(&config, None).is_none());
+    }
+
+    #[test]
+    fn models_put_the_configured_model_first() {
+        let config = serde_json::json!({
+            "config": "model = \"gpt-5.6-sol\"\nmodel_provider = \"relay\"\n\n[model_providers.relay]\nbase_url = \"https://api.relay.test/v1\"\nwire_api = \"responses\"\n"
+        });
+        let models = ccswitch_models(&config, "https://api.relay.test/v1", Some("sk-test"));
+        // The relay is offline in tests: the configured model alone remains.
+        assert_eq!(models, vec!["gpt-5.6-sol".to_string()]);
+    }
+
+    #[test]
+    fn stale_ccswitch_prefixes_are_removed_from_stores() {
+        let dir = std::env::temp_dir().join(format!("orbit-ccswitch-stale-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let models_path = dir.join("models.json");
+        let auth_path = dir.join("auth.json");
+        std::fs::write(&models_path, r#"{"providers":{"keep":{"baseUrl":"x"},"ccswitch-claude-old":{"baseUrl":"y"}}}"#).unwrap();
+        std::fs::write(&auth_path, r#"{"keep":{"type":"api_key"},"ccswitch-claude-old":{"type":"api_key"}}"#).unwrap();
+        ccswitch_remove_stale_at(&models_path, &auth_path).unwrap();
+        let models: Value = serde_json::from_str(&std::fs::read_to_string(&models_path).unwrap()).unwrap();
+        let auth: Value = serde_json::from_str(&std::fs::read_to_string(&auth_path).unwrap()).unwrap();
+        assert!(models["providers"].get("keep").is_some());
+        assert!(models["providers"].get("ccswitch-claude-old").is_none());
+        assert!(auth.get("keep").is_some());
+        assert!(auth.get("ccswitch-claude-old").is_none());
+    }
+
 
     fn temp_models(tag: &str) -> PathBuf {
         let dir =

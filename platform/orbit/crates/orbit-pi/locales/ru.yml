@@ -2052,3 +2052,9 @@ settings.openviking_unreachable: "Сервер OpenViking недоступен �
 studio.window_failed: "Не удалось создать окно Studio."
 studio.invalid_utf8: "Параметр Studio содержит недопустимый текст."
 studio.native_window_unsupported: "Нативные окна Studio здесь не поддерживаются; открываю в браузере."
+
+settings.import_ccswitch: "Импортировать CCSwitch OpenAI"
+settings.ccswitch_imported: "Импортировано провайдеров CCSwitch OpenAI: %{imported}; пропущено: %{skipped}"
+providers.ccswitch_home_missing: "Не найден домашний каталог CCSwitch."
+providers.ccswitch_database_missing: "База данных CCSwitch не найдена в %{path}."
+providers.ccswitch_read_failed: "Не удалось прочитать провайдеров CCSwitch: %{error}"
