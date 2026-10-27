@@ -19,8 +19,10 @@ permissions: {}
 jobs:
   publish:
     # Only CI runs for pushes to main and for PRs from branches of this repo. A branch can make its own copy of CI run
-    # on push; such runs are not reviewed and must not be published as push builds.
+    # on push; such runs are not reviewed and must not be published as push builds. Forks are skipped entirely:
+    # pkg.earendil.com only accepts uploads from earendil-works/pi, so preview publishing is meaningless here.
     if: >-
+      github.repository == 'earendil-works/pi' &&
       github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'cancelled' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
       ((github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') ||
@@ -94,7 +96,9 @@ jobs:
 
   cleanup:
     # Only PRs into main: pull_request_target runs this file from the PR's base branch, and only main is allowed.
+    # Forks are skipped entirely (see publish).
     if: >-
+      github.repository == 'earendil-works/pi' &&
       github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == github.event.repository.default_branch &&
       github.event.pull_request.head.repo.full_name == github.repository
     concurrency:
