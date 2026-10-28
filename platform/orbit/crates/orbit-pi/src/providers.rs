@@ -318,6 +318,11 @@ fn ccswitch_models(
 			continue;
 		};
 		for model in value.get("models").and_then(Value::as_array).into_iter().flatten() {
+			// Codex hides its retired aliases (gpt-5, gpt-5.1, the -mini
+			// predecessors…): only the models it still lists are usable.
+			if model.get("visibility").and_then(Value::as_str) == Some("hide") {
+				continue;
+			}
 			let id = model.get("slug").and_then(Value::as_str);
 			let context_window = model
 				.get("context_window")
@@ -1391,7 +1396,7 @@ mod tests {
         .unwrap();
         std::fs::write(
             dir.join("models_cache.json"),
-            r#"{"models":[{"slug":"gpt-5.3-codex","max_context_window":272000},{"slug":"gpt-5.6-sol","max_context_window":278528}]}"#,
+            r#"{"models":[{"slug":"gpt-5.3-codex","max_context_window":272000,"visibility":"list"},{"slug":"gpt-5","visibility":"hide"},{"slug":"gpt-5.6-sol","max_context_window":278528}]}"#,
         )
         .unwrap();
         let config = serde_json::json!({
@@ -1400,6 +1405,8 @@ mod tests {
         let models = ccswitch_models(&config, "https://api.relay.test/v1", Some("sk-test"), Some(&dir));
         let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
         assert_eq!(ids, vec!["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.3-codex"]);
+        // Hidden (retired) aliases are dropped.
+        assert!(!ids.contains(&"gpt-5"));
         assert_eq!(models[0].context_window, Some(278528));
         // The cache's duplicate gpt-5.6-sol did not reset the catalog window.
         assert_eq!(models[1].context_window, Some(278528));
