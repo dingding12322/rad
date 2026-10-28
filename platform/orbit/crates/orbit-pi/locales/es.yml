@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "Se importaron %{imported} proveedores de CCSwitch O
 providers.ccswitch_home_missing: "No se encontró el directorio home de CCSwitch."
 providers.ccswitch_database_missing: "Base de datos de CCSwitch no encontrada en %{path}."
 providers.ccswitch_read_failed: "No se pudieron leer los proveedores de CCSwitch: %{error}"
+
+model_selector.search_providers: "Buscar proveedores"
+model_selector.all_providers: "Todos los proveedores"
+
+model_selector.n_providers: "%{count} proveedor(es)"
+model_selector.no_matching_providers: "No hay proveedores coincidentes. Prueba otro filtro o añade modelos en Proveedores."

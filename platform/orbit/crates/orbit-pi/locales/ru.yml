@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "Импортировано провайдеров C
 providers.ccswitch_home_missing: "Не найден домашний каталог CCSwitch."
 providers.ccswitch_database_missing: "База данных CCSwitch не найдена в %{path}."
 providers.ccswitch_read_failed: "Не удалось прочитать провайдеров CCSwitch: %{error}"
+
+model_selector.search_providers: "Поиск провайдеров"
+model_selector.all_providers: "Все провайдеры"
+
+model_selector.n_providers: "Провайдеров: %{count}"
+model_selector.no_matching_providers: "Нет подходящих провайдеров. Измените фильтр или добавьте модели в разделе «Провайдеры»."

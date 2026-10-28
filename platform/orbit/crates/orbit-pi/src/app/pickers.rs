@@ -171,6 +171,18 @@ impl OrbitApp {
     /// Toggle one of the two composer dropdowns (model / thinking). Opening
     /// one closes the other; clicking the open chip closes it. Re-checks the
     /// catalog on open so the list always reflects the live pi session.
+    /// Set the composer's relay filter (the scope the model picker opens
+    /// with) and remember it across restarts.
+    pub(super) fn set_provider_filter(
+        &mut self,
+        provider: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
+        self.relay_filter = provider.clone();
+        crate::provider_filter::save(provider.as_deref());
+        cx.notify();
+    }
+
     pub(super) fn toggle_picker(
         &mut self,
         kind: PickerKind,
@@ -212,6 +224,7 @@ impl OrbitApp {
 
         // The popup talks back exclusively through these callbacks; it never
         // borrows app state.
+        let provider_pick = kind == PickerKind::Provider;
         let this = cx.weak_entity();
         let on_select_model = Box::new(
             move |id: &str, provider: &str, window: &mut Window, cx: &mut App| {
@@ -225,14 +238,57 @@ impl OrbitApp {
                 .ok();
             },
         ) as Box<dyn Fn(&str, &str, &mut Window, &mut App)>;
-        let this = cx.weak_entity();
-        let on_select_level = Box::new(move |level: &str, window: &mut Window, cx: &mut App| {
-            this.update(cx, |app, cx| {
-                app.set_thinking_level(level.to_string(), cx);
-                app.close_model_selector(window, cx);
-            })
-            .ok();
-        }) as Box<dyn Fn(&str, &mut Window, &mut App)>;
+        // The Provider picker's "level" rows are relays; picking one sets the
+        // composer's relay filter (the empty entry clears it).
+        let on_select_level = if provider_pick {
+            let this = cx.weak_entity();
+            Box::new(move |level: &str, window: &mut Window, cx: &mut App| {
+                let provider = (!level.is_empty()).then(|| level.to_string());
+                this.update(cx, |app, cx| {
+                    app.set_provider_filter(provider, cx);
+                    app.close_model_selector(window, cx);
+                })
+                .ok();
+            }) as Box<dyn Fn(&str, &mut Window, &mut App)>
+        } else {
+            let this = cx.weak_entity();
+            Box::new(move |level: &str, window: &mut Window, cx: &mut App| {
+                this.update(cx, |app, cx| {
+                    app.set_thinking_level(level.to_string(), cx);
+                    app.close_model_selector(window, cx);
+                })
+                .ok();
+            }) as Box<dyn Fn(&str, &mut Window, &mut App)>
+        };
+        // The model picker opens scoped to the relay chosen on the provider
+        // chip; the other pickers ignore scopes.
+        let initial_scope = if provider_pick {
+            crate::model_selector::Scope::All
+        } else {
+            self.relay_filter
+                .clone()
+                .map(crate::model_selector::Scope::Provider)
+                .unwrap_or(crate::model_selector::Scope::All)
+        };
+        // Provider picker rows: "" (all providers) first, then one entry per
+        // relay in first-appearance order.
+        let levels = if provider_pick {
+            let mut names = vec![String::new()];
+            let mut seen = std::collections::BTreeSet::new();
+            for model in &self.available_models {
+                if seen.insert(model.provider.clone()) {
+                    names.push(model.provider.clone());
+                }
+            }
+            names
+        } else {
+            self.available_thinking_levels.clone()
+        };
+        let current_level = if provider_pick {
+            self.relay_filter.clone().unwrap_or_default()
+        } else {
+            self.thinking_label.clone()
+        };
         let this = cx.weak_entity();
         let on_dismiss = Box::new(move |by_mouse: bool, window: &mut Window, cx: &mut App| {
             this.update(cx, |app, cx| {
@@ -249,11 +305,12 @@ impl OrbitApp {
             ModelSelector::new(
                 kind,
                 self.available_models.clone(),
-                self.available_thinking_levels.clone(),
+                levels,
                 self.model_label.clone(),
                 self.model_id.clone(),
                 self.model_provider.clone(),
-                self.thinking_label.clone(),
+                current_level,
+                initial_scope,
                 on_select_model,
                 on_select_level,
                 on_dismiss,

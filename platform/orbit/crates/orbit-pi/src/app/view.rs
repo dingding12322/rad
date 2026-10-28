@@ -1433,6 +1433,7 @@ impl OrbitApp {
             // empty state.
             .when(!compact, |row| row.child(self.workflow_chip(cx)))
             .child(div().flex_1())
+            .when(!compact, |row| row.child(self.provider_chip(cx)))
             .child(self.model_chip(compact, cx))
             .children(self.thinking_chip(cx))
             .children(self.steer_button(cx))
@@ -2124,6 +2125,80 @@ impl OrbitApp {
                         .child(deferred(selector))
                 })
             })
+    }
+
+    /// The provider filter chip: relay glyph + relay name (or the all-
+    /// providers label). Ghost style, matching the model chip beside it —
+    /// picking a relay scopes the model picker to that relay.
+    pub(super) fn provider_chip(&self, cx: &Context<Self>) -> impl IntoElement + use<> {
+        let theme = *theme::get(cx);
+        let disabled = self.is_running();
+        let open = !disabled && self.picker_is_open(PickerKind::Provider);
+        let filter = self.relay_filter.clone();
+        let label = filter
+            .as_deref()
+            .map(crate::providers::provider_display_name)
+            .unwrap_or_else(|| tr!("model_selector.all_providers"));
+        div()
+            .flex()
+            .flex_col()
+            .items_start()
+            .children(self.chip_popup(PickerKind::Provider))
+            .child(
+                button_frame(div().id("provider-chip"), &theme, ButtonSize::Default)
+                    .when(!disabled, |chip| {
+                        chip.cursor_pointer()
+                            .hover(|s| s.bg(theme.surface_hover))
+                            .when(open, |chip| chip.bg(theme.surface_active))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(Self::on_provider_trigger_click),
+                            )
+                    })
+                    .when(disabled, |chip| chip.cursor_not_allowed())
+                    .child({
+                        let color = if disabled {
+                            theme.text_disabled
+                        } else if open {
+                            theme.text_primary
+                        } else {
+                            theme.text_muted
+                        };
+                        match &filter {
+                            Some(provider) => icon_dyn(
+                                provider_icon(provider),
+                                ButtonSize::Default.icon_size().px(&theme),
+                                color,
+                            )
+                            .into_any_element(),
+                            None => icon(
+                                "icons/extensions.svg",
+                                ButtonSize::Default.icon_size().px(&theme),
+                                color,
+                            )
+                            .into_any_element(),
+                        }
+                    })
+                    .child(
+                        div()
+                            .max_w(px(140.))
+                            .truncate()
+                            .text_color(if disabled {
+                                theme.text_disabled
+                            } else if open {
+                                theme.text_primary
+                            } else {
+                                theme.text_secondary
+                            })
+                            .child(label),
+                    )
+                    .child(Self::chip_caret(
+                        open,
+                        theme.text_primary,
+                        "provider-caret-turn",
+                        cx,
+                    )),
+            )
     }
 
     /// The model chip: provider glyph + model name + caret. Ghost style —

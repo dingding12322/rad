@@ -2057,3 +2057,9 @@ settings.ccswitch_imported: "已导入 %{imported} 个 CCSwitch OpenAI 供应商
 providers.ccswitch_home_missing: "未找到 CCSwitch 的主目录。"
 providers.ccswitch_database_missing: "在 %{path} 未找到 CCSwitch 数据库。"
 providers.ccswitch_read_failed: "读取 CCSwitch 供应商失败：%{error}"
+
+model_selector.search_providers: "搜索供应商"
+model_selector.all_providers: "全部供应商"
+
+model_selector.n_providers: "%{count} 个供应商"
+model_selector.no_matching_providers: "没有匹配的供应商。试试其他筛选，或在“服务商”页添加模型。"

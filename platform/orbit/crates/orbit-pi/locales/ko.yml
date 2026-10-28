@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "CCSwitch OpenAI 공급자 %{imported}개를 가져�
 providers.ccswitch_home_missing: "CCSwitch 홈 디렉터리를 찾을 수 없습니다."
 providers.ccswitch_database_missing: "%{path} 에서 CCSwitch 데이터베이스를 찾을 수 없습니다."
 providers.ccswitch_read_failed: "CCSwitch 공급자를 읽을 수 없습니다: %{error}"
+
+model_selector.search_providers: "공급자 검색"
+model_selector.all_providers: "모든 공급자"
+
+model_selector.n_providers: "공급자 %{count}개"
+model_selector.no_matching_providers: "일치하는 공급자가 없습니다. 필터를 바꾸거나 공급자 페이지에서 모델을 추가하세요."

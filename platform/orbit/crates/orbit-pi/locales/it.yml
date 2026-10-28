@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "Importati %{imported} provider CCSwitch OpenAI; sal
 providers.ccswitch_home_missing: "Directory home di CCSwitch non trovata."
 providers.ccswitch_database_missing: "Database CCSwitch non trovato in %{path}."
 providers.ccswitch_read_failed: "Impossibile leggere i provider CCSwitch: %{error}"
+
+model_selector.search_providers: "Cerca provider"
+model_selector.all_providers: "Tutti i provider"
+
+model_selector.n_providers: "%{count} provider"
+model_selector.no_matching_providers: "Nessun provider corrispondente. Prova un altro filtro o aggiungi modelli in Provider."

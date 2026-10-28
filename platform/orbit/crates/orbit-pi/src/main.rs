@@ -85,6 +85,7 @@ mod pi_update;
 mod pins;
 mod platform;
 mod plugins;
+mod provider_filter;
 mod providers;
 mod quota;
 mod quota_hidden;

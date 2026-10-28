@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "CCSwitch OpenAI プロバイダを %{imported} 件�
 providers.ccswitch_home_missing: "CCSwitch のホームディレクトリが見つかりません。"
 providers.ccswitch_database_missing: "%{path} に CCSwitch データベースが見つかりません。"
 providers.ccswitch_read_failed: "CCSwitch プロバイダを読み込めませんでした: %{error}"
+
+model_selector.search_providers: "プロバイダを検索"
+model_selector.all_providers: "すべてのプロバイダ"
+
+model_selector.n_providers: "%{count} 件のプロバイダ"
+model_selector.no_matching_providers: "一致するプロバイダがありません。フィルタを変えるか「プロバイダ」でモデルを追加してください。"

@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "%{imported} fournisseur(s) CCSwitch OpenAI importé
 providers.ccswitch_home_missing: "Répertoire home de CCSwitch introuvable."
 providers.ccswitch_database_missing: "Base de données CCSwitch introuvable à %{path}."
 providers.ccswitch_read_failed: "Impossible de lire les fournisseurs CCSwitch : %{error}"
+
+model_selector.search_providers: "Rechercher des fournisseurs"
+model_selector.all_providers: "Tous les fournisseurs"
+
+model_selector.n_providers: "%{count} fournisseur(s)"
+model_selector.no_matching_providers: "Aucun fournisseur correspondant. Essayez un autre filtre ou ajoutez des modèles dans Fournisseurs."

@@ -2051,3 +2051,9 @@ settings.openviking_unreachable: "OpenViking server is not reachable at 127.0.0.
 studio.window_failed: "Could not create the Studio window."
 studio.invalid_utf8: "A Studio setting contains invalid text."
 studio.native_window_unsupported: "Native Studio windows are unsupported here; opening the browser instead."
+
+model_selector.search_providers: "Search providers"
+model_selector.all_providers: "All providers"
+
+model_selector.n_providers: "%{count} provider(s)"
+model_selector.no_matching_providers: "No matching providers. Try another filter or add models in Providers."

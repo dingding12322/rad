@@ -103,11 +103,14 @@ pub enum PickerKind {
     Model,
     /// Thinking levels from `get_available_thinking_levels`.
     Thinking,
+    /// Provider list for the composer's relay filter (flat rows, one per
+    /// provider, plus an "all providers" entry).
+    Provider,
 }
 
 /// What the model list is currently scoped to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-enum Scope {
+pub(crate) enum Scope {
     /// The full catalog, grouped by provider.
     #[default]
     All,
@@ -197,6 +200,7 @@ impl ModelSelector {
         current_model_id: String,
         current_model_provider: String,
         current_level: String,
+        initial_scope: Scope,
         on_select_model: SelectModel,
         on_select_level: SelectLevel,
         on_dismiss: SelectorDismiss,
@@ -208,6 +212,7 @@ impl ModelSelector {
         let placeholder_key = match kind {
             PickerKind::Model => "model_selector.search_models",
             PickerKind::Thinking => "model_selector.search_levels",
+            PickerKind::Provider => "model_selector.search_providers",
         };
         let filter = cx.new(|cx| {
             ComposerInput::new(cx)
@@ -252,7 +257,7 @@ impl ModelSelector {
             current_model_provider,
             current_level,
             filter,
-            scope: Scope::All,
+            scope: initial_scope,
             list_scroll,
             highlighted,
             selected_catalog_ix,
@@ -286,6 +291,9 @@ impl ModelSelector {
             PickerKind::Thinking => levels
                 .iter()
                 .position(|level| level.eq_ignore_ascii_case(current_level)),
+            // levels are provider display names; the current filter is one of
+            // them (the "all" entry included).
+            PickerKind::Provider => levels.iter().position(|level| level == current_level),
         }
     }
 
@@ -322,9 +330,12 @@ impl ModelSelector {
         let matches = |text: &str| needle.is_empty() || text.to_lowercase().contains(needle);
         let mut rows = Vec::new();
 
-        if kind == PickerKind::Thinking {
+        if matches!(kind, PickerKind::Thinking | PickerKind::Provider) {
             for level in levels.iter().filter(|level| {
-                matches(level)
+                // Provider picker leads with an empty "all providers" entry:
+                // it stays visible whatever the filter says.
+                level.is_empty()
+                    || matches(level)
                     || matches(&thinking_display(level))
                     || matches(&thinking_hint(level))
             }) {
@@ -926,10 +937,11 @@ impl Render for ModelSelector {
         let metrics = ListMetrics::new(&theme);
         let width = match self.kind {
             PickerKind::Model => MODEL_POPOVER_W,
-            PickerKind::Thinking => THINKING_POPOVER_W,
+            PickerKind::Thinking | PickerKind::Provider => THINKING_POPOVER_W,
         };
         let option_count = rows.iter().filter(|row| !row.is_header()).count();
         let count_label = match self.kind {
+            PickerKind::Provider => tr!("model_selector.n_providers", count = option_count),
             PickerKind::Thinking => tr!("model_selector.n_levels", count = option_count),
             PickerKind::Model => match self.scope {
                 Scope::Recents => tr!("model_selector.n_recent", count = option_count),
@@ -958,6 +970,7 @@ impl Render for ModelSelector {
                 &self.models,
                 ix,
                 ix == self.highlighted,
+                self.kind,
                 &this,
                 theme,
             ));
@@ -1309,6 +1322,10 @@ fn empty_state(kind: PickerKind, theme: Theme) -> impl IntoElement + use<> {
             tr!("model_selector.no_matching_levels"),
             tr!("model_selector.try_a_reasoning_level"),
         ),
+        PickerKind::Provider => (
+            tr!("model_selector.no_matching_providers"),
+            tr!("model_selector.all_providers"),
+        ),
     };
     // Zed's no-match state: one muted picker entry in the list's place.
     div().py(picker::list_padding_y(&theme)).child(
@@ -1429,6 +1446,7 @@ fn render_row(
     models: &[ModelEntry],
     ix: usize,
     highlighted: bool,
+    kind: PickerKind,
     this: &Entity<ModelSelector>,
     theme: Theme,
 ) -> gpui::AnyElement {
@@ -1522,6 +1540,51 @@ fn render_row(
     };
 
     match row {
+        Row::Level { level, .. } if kind == PickerKind::Provider => {
+            // Provider rows: brand mark + display name; the empty entry is
+            // the "all providers" reset.
+            let (lead, label) = if level.is_empty() {
+                (
+                    icon(
+                        "icons/extensions.svg",
+                        IconSize::Small.px(&theme),
+                        if selected || highlighted {
+                            theme.text_primary
+                        } else {
+                            theme.text_muted
+                        },
+                    )
+                    .into_any_element(),
+                    tr!("model_selector.all_providers"),
+                )
+            } else {
+                (
+                    icon_dyn(
+                        provider_icon(level),
+                        IconSize::Small.px(&theme),
+                        if selected || highlighted {
+                            theme.text_primary
+                        } else {
+                            provider_mark_color(level, &theme, theme.text_muted)
+                        },
+                    )
+                    .into_any_element(),
+                    provider_display_name(level),
+                )
+            };
+            row_shell(div())
+                .child(lead)
+                .child(label_column(
+                    label,
+                    "",
+                    selected,
+                    highlighted,
+                    false,
+                    theme,
+                ))
+                .child(trailing_check(selected, theme))
+                .into_any_element()
+        }
         Row::Level { level, .. } => row_shell(div())
             .child(thinking_chip(level, theme))
             .child(label_column(
@@ -2080,6 +2143,7 @@ mod tests {
                     "m0".into(),
                     "opencode-go".into(),
                     "low".into(),
+                    Scope::All,
                     Box::new(|_, _, _, _| {}),
                     Box::new(|_, _, _| {}),
                     Box::new(|_, _, _| {}),
@@ -2157,6 +2221,7 @@ mod tests {
                     "m0".into(),
                     "opencode-go".into(),
                     "low".into(),
+                    Scope::All,
                     Box::new(|_, _, _, _| {}),
                     Box::new(|_, _, _| {}),
                     Box::new(|_, _, _| {}),
@@ -2376,6 +2441,7 @@ mod tests {
                     String::new(),
                     String::new(),
                     "low".into(),
+                    crate::model_selector::Scope::All,
                     Box::new(|_, _, _, _| {}),
                     Box::new(|_, _, _| {}),
                     Box::new(|_, _, _| {}),

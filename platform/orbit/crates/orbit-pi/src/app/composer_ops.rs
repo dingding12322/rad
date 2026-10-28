@@ -622,6 +622,15 @@ impl OrbitApp {
         self.toggle_picker(kind, window, cx);
     }
 
+    pub(super) fn on_provider_trigger_click(
+        &mut self,
+        _: &MouseUpEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.on_chip_trigger_click(PickerKind::Provider, window, cx);
+    }
+
     pub(super) fn on_model_trigger_click(
         &mut self,
         _: &MouseUpEvent,

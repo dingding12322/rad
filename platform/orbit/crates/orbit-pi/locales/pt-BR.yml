@@ -2058,3 +2058,9 @@ settings.ccswitch_imported: "%{imported} provedor(es) CCSwitch OpenAI importados
 providers.ccswitch_home_missing: "Diretório home do CCSwitch não encontrado."
 providers.ccswitch_database_missing: "Banco de dados do CCSwitch não encontrado em %{path}."
 providers.ccswitch_read_failed: "Não foi possível ler os provedores do CCSwitch: %{error}"
+
+model_selector.search_providers: "Buscar provedores"
+model_selector.all_providers: "Todos os provedores"
+
+model_selector.n_providers: "%{count} provedor(es)"
+model_selector.no_matching_providers: "Nenhum provedor correspondente. Tente outro filtro ou adicione modelos em Provedores."
