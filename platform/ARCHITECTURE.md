@@ -52,7 +52,10 @@ rad/
       viking:// URI 守卫（非 OV 工具访问即拦截）
 - [x] 扩展全局化：`platform/extensions/sync.sh` 同步 ov.ts 到
       `~/.rad/agent/extensions/`（所有 cwd 生效；改源后需重跑 sync）
-- [x] rad MCP：openviking（15 工具）+ rea（170 工具）
+- [x] rad MCP：openviking（15 工具）+ rea（170 工具）- [x] CCSwitch OpenAI 中转一键导入（Orbit Providers 页；模板清单
+  `~/.rad/agent/provider-model-template.json` 驱动模型列表，用户可编辑；
+  已有 provider 重导不覆盖）
+
 - [x] `platform/setup/bootstrap.sh`：17 项环境幂等检查 + 引导
 - [x] 模型上下文统一 476K（`~/.rad/agent/models.json` modelOverrides）
 - [ ] platform/setup 一键还原（bootstrap.sh 已做检查+引导；自动安装待做）
