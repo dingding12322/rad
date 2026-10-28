@@ -10,12 +10,22 @@ use serde_json::{json, Value};
 
 /// Read the persisted relay filter, `None` when unset or the file is absent.
 pub(crate) fn load() -> Option<String> {
+    // GUI tests must not depend on the developer machine's real filter —
+    // a persisted relay would silently scope every test-opened model picker.
+    #[cfg(test)]
+    return None;
+    #[cfg(not(test))]
     load_at(&path())
 }
 
 /// Persist the relay filter; `None` clears it. Best-effort like the other
 /// Orbit state files — a failed write keeps the previous choice.
 pub(crate) fn save(provider: Option<&str>) {
+    #[cfg(test)]
+    {
+        let _ = provider;
+    }
+    #[cfg(not(test))]
     save_at(&path(), provider);
 }
 

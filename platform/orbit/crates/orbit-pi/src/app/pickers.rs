@@ -273,14 +273,7 @@ impl OrbitApp {
         // Provider picker rows: "" (all providers) first, then one entry per
         // relay in first-appearance order.
         let levels = if provider_pick {
-            let mut names = vec![String::new()];
-            let mut seen = std::collections::BTreeSet::new();
-            for model in &self.available_models {
-                if seen.insert(model.provider.clone()) {
-                    names.push(model.provider.clone());
-                }
-            }
-            names
+            provider_level_rows(&self.available_models)
         } else {
             self.available_thinking_levels.clone()
         };
@@ -816,16 +809,40 @@ impl OrbitApp {
     /// Push the latest catalog/current-selection snapshot into the open
     /// popup (no-op while it is closed).
     pub(super) fn sync_model_selector(&mut self, cx: &mut Context<Self>) {
-        if let Some((_, selector)) = &self.model_selector {
+        if let Some((kind, selector)) = &self.model_selector {
             let models = self.available_models.clone();
-            let levels = self.available_thinking_levels.clone();
+            // The provider popup's rows are relays, not thinking levels — a
+            // plain catalog sync would overwrite them mid-session.
+            let (levels, level) = if *kind == PickerKind::Provider {
+                (
+                    provider_level_rows(&models),
+                    self.relay_filter.clone().unwrap_or_default(),
+                )
+            } else {
+                (
+                    self.available_thinking_levels.clone(),
+                    self.thinking_label.clone(),
+                )
+            };
             let model = self.model_label.clone();
             let model_id = self.model_id.clone();
             let provider = self.model_provider.clone();
-            let level = self.thinking_label.clone();
             selector.update(cx, |selector, cx| {
                 selector.set_catalog(models, levels, model, model_id, provider, level, cx)
             });
         }
     }
+}
+
+/// The provider popup's row data: the "all providers" sentinel followed by
+/// one entry per relay, in first-appearance catalog order.
+fn provider_level_rows(models: &[ModelEntry]) -> Vec<String> {
+    let mut names = vec![String::new()];
+    let mut seen = std::collections::BTreeSet::new();
+    for model in models {
+        if seen.insert(model.provider.clone()) {
+            names.push(model.provider.clone());
+        }
+    }
+    names
 }
