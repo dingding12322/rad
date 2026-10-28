@@ -2359,6 +2359,35 @@ impl OrbitApp {
                     .child(tr!("settings.add_provider")),
             );
 
+        let import_button = button_frame(
+            div().id("providers-import-ccswitch"),
+            &theme,
+            ButtonSize::Large,
+        )
+        .border_1()
+        .border_color(theme.border)
+        .raised(theme.surface_elevated, &theme)
+        .cursor_pointer()
+        .hover(|style| style.raised(theme.surface_hover, &theme))
+        .active(|style| style.raised(theme.surface_active, &theme))
+        .on_mouse_up(MouseButton::Left, {
+            let this = this.clone();
+            move |_, _, cx| {
+                this.update(cx, |app, cx| app.provider_import_ccswitch(cx));
+            }
+        })
+        .child(icon(
+            "icons/arrow-down.svg",
+            ButtonSize::Large.icon_size().px(&theme),
+            theme.text_secondary,
+        ))
+        .child(
+            div()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(theme.text_secondary)
+                .child(tr!("settings.import_ccswitch")),
+        );
+
         let toolbar = div()
             .w_full()
             .flex()
@@ -2378,6 +2407,7 @@ impl OrbitApp {
                     )),
             )
             .child(refresh_button)
+            .child(import_button)
             .child(add_button);
 
         div()
@@ -8190,6 +8220,30 @@ impl OrbitApp {
             Err(err) => {
                 self.custom_providers_error = Some(err);
             }
+        }
+        cx.notify();
+    }
+
+    pub(super) fn provider_import_ccswitch(&mut self, cx: &mut Context<Self>) {
+        if self.busy || self.transcript.is_streaming() {
+            self.toast_warning(tr!("settings.finish_turn_before_restart"));
+            cx.notify();
+            return;
+        }
+        match providers::import_ccswitch() {
+            Ok((imported, skipped, notices)) => {
+                self.reload_custom_providers(cx);
+                self.restart_pi_for_catalog(cx);
+                for notice in &notices {
+                    self.toast_warning(notice.clone());
+                }
+                self.toast_success(tr!(
+                    "settings.ccswitch_imported",
+                    imported = imported,
+                    skipped = skipped
+                ));
+            }
+            Err(err) => self.custom_providers_error = Some(err),
         }
         cx.notify();
     }

@@ -133,7 +133,7 @@ pub(crate) fn write_provider(
 /// Import CCSwitch's OpenAI/Codex providers into pi's shared provider files.
 /// CCSwitch keeps the provider payload in SQLite; using its read-only CLI
 /// export avoids a new database dependency while keeping secrets out of logs.
-pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
+pub(crate) fn import_ccswitch() -> Result<(usize, usize, Vec<String>), String> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
@@ -164,6 +164,7 @@ pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
 
     let mut imported = 0;
     let mut skipped = 0;
+    let mut notices: Vec<String> = Vec::new();
     for row in rows {
         let Some(source_id) = row.get("id").and_then(Value::as_str) else {
             skipped += 1;
@@ -187,11 +188,12 @@ pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
             skipped += 1;
             continue;
         }
-        let models = ccswitch_models(&config, &base_url, api_key.as_deref(), None);
+        let (models, model_notices) = ccswitch_models(&config, &provider_model_template_path());
         if models.is_empty() {
             skipped += 1;
             continue;
         }
+        notices.extend(model_notices);
         let model_ids: Vec<String> = models.iter().map(|model| model.id.clone()).collect();
         write_provider(
             &id,
@@ -207,7 +209,12 @@ pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
         }
         imported += 1;
     }
-    Ok((imported, skipped))
+    Ok((imported, skipped, notices))
+}
+
+/// The user-curated model template applied to every imported Codex relay.
+fn provider_model_template_path() -> PathBuf {
+    orbit_rpc::agent_dir().join("provider-model-template.json")
 }
 
 /// Remove providers this import no longer manages: earlier builds also wrote
@@ -276,157 +283,95 @@ fn ccswitch_remove_stale_at(models_path: &Path, auth_path: &Path) -> Result<(), 
 /// `GET {base_url}/models`, with the model the Codex config currently
 /// selects pinned to the front (the relay list may not contain it verbatim).
 /// Falls back to just the configured model when the relay does not answer.
+/// One imported model entry: id plus the context window the template
+/// (or the Codex config TOML) declared.
 #[derive(Clone, Debug)]
 struct CcswitchModel {
-	id: String,
-	context_window: Option<u64>,
+    id: String,
+    context_window: Option<u64>,
 }
 
 /// The provider's model list, in priority order:
-/// 1. the model the Codex config currently selects (pinned first, with the
-///    context window its TOML declares)
-/// 2. CCSwitch's own model catalog (`~/.codex/cc-switch-model-catalog.json`)
-/// 3. Codex's official model cache (`~/.codex/models_cache.json`)
-/// 4. whatever the relay itself lists on `GET {base_url}/models`
+/// 1. the user-curated template (`~/.rad/agent/provider-model-template.json`)
+/// 2. the model the Codex config currently selects, pinned first when it is
+///    not part of the template (reported back as a notice)
 ///
-/// `codex_catalog_dir` overrides the `~/.codex` directory tests pin; `None`
-/// reads the real one.
+/// Catalog caches and relay model lists are deliberately not merged: they
+/// mixed retired aliases and image models into curated sets.
 fn ccswitch_models(
-	config: &Value,
-	base_url: &str,
-	api_key: Option<&str>,
-	codex_catalog_dir: Option<&Path>,
-) -> Vec<CcswitchModel> {
-	let config_text = config.get("config").and_then(Value::as_str).unwrap_or("");
-	let mut models: Vec<CcswitchModel> = Vec::new();
-	let mut add = |id: &str, context_window: Option<u64>| {
-		let id = id.trim();
-		if id.is_empty() {
-			return;
-		}
-		if let Some(existing) = models.iter_mut().find(|model| model.id == id) {
-			if existing.context_window.is_none() {
-				existing.context_window = context_window;
-			}
-			return;
-		}
-		models.push(CcswitchModel {
-			id: id.to_string(),
-			context_window,
-		});
-	};
-	// 1. The configured model, with the context window its TOML declares.
-	let current = ccswitch_toml_str(config_text, "model").unwrap_or_default();
-	let window = ccswitch_toml_u64(config_text, "model_context_window");
-	add(current, window);
-	// 2/3. Catalogs under ~/.codex (CCSwitch's, then Codex's own cache).
-	let codex_dir = match codex_catalog_dir {
-		Some(dir) => dir.to_path_buf(),
-		None => std::env::var_os("HOME")
-			.or_else(|| std::env::var_os("USERPROFILE"))
-			.map(PathBuf::from)
-			.map(|home| home.join(".codex"))
-			.unwrap_or_default(),
-	};
-	for file in ["cc-switch-model-catalog.json", "models_cache.json"] {
-		let Ok(raw) = std::fs::read_to_string(codex_dir.join(file)) else {
-			continue;
-		};
-		let Ok(value) = serde_json::from_str::<Value>(&raw) else {
-			continue;
-		};
-		for model in value.get("models").and_then(Value::as_array).into_iter().flatten() {
-			// Codex hides its retired aliases (gpt-5, gpt-5.1, the -mini
-			// predecessors…): only the models it still lists are usable.
-			if model.get("visibility").and_then(Value::as_str) == Some("hide") {
-				continue;
-			}
-			let id = model.get("slug").and_then(Value::as_str);
-			let context_window = model
-				.get("context_window")
-				.and_then(Value::as_u64)
-				.or_else(|| model.get("max_context_window").and_then(Value::as_u64));
-			if let Some(id) = id {
-				add(id, context_window);
-			}
-		}
-	}
-	// 4. The relay's own list, for names the catalogs do not know yet.
-	if let Some(key) = api_key {
-		for id in ccswitch_relay_model_ids(base_url, key) {
-			add(&id, None);
-		}
-	}
-	models
+    config: &Value,
+    template_path: &Path,
+) -> (Vec<CcswitchModel>, Vec<String>) {
+    let config_text = config.get("config").and_then(Value::as_str).unwrap_or("");
+    let mut models: Vec<CcswitchModel> = Vec::new();
+    let mut notices: Vec<String> = Vec::new();
+    if let Ok(raw) = std::fs::read_to_string(template_path) {
+        if let Ok(value) = serde_json::from_str::<Value>(&raw) {
+            for model in value.get("models").and_then(Value::as_array).into_iter().flatten() {
+                let id = model.get("id").and_then(Value::as_str).unwrap_or_default();
+                if id.is_empty() {
+                    continue;
+                }
+                models.push(CcswitchModel {
+                    id: id.to_string(),
+                    context_window: model.get("contextWindow").and_then(Value::as_u64),
+                });
+            }
+        }
+    }
+    // The configured model must stay selectable even when it is not part of
+    // the template. Without a template there is nothing to contrast it with,
+    // so the fallback adds it silently.
+    let current = ccswitch_toml_str(config_text, "model").unwrap_or_default().trim().to_string();
+    if !current.is_empty() && !models.iter().any(|model| model.id == current) {
+        let window = ccswitch_toml_u64(config_text, "model_context_window");
+        if !models.is_empty() {
+            notices.push(format!(
+                "provider 当前模型 {current} 不在模板清单中，已置顶补充（context_window={window:?}）"
+            ));
+        }
+        models.insert(
+            0,
+            CcswitchModel {
+                id: current,
+                context_window: window,
+            },
+        );
+    }
+    (models, notices)
 }
 
 /// Replace a provider's models array with full entries (id + optional
 /// context window) so context estimates follow the Codex catalog values
 /// instead of the 128k default. Every Codex catalog model reasons.
 fn write_provider_models_full(id: &str, models: &[CcswitchModel]) -> Result<(), String> {
-	let path = models_json_path();
-	let Ok(raw) = std::fs::read_to_string(&path) else {
-		return Ok(());
-	};
-	let mut root: Value = serde_json::from_str(&raw).map_err(|err| err.to_string())?;
-	let entries: Vec<Value> = models
-		.iter()
-		.map(|model| {
-			let mut entry = Map::new();
-			entry.insert("id".into(), Value::String(model.id.clone()));
-			if let Some(window) = model.context_window {
-				entry.insert("contextWindow".into(), Value::from(window));
-			}
-			entry.insert("reasoning".into(), Value::Bool(true));
-			Value::Object(entry)
-		})
-		.collect();
-	if let Some(provider) = root
-		.get_mut("providers")
-		.and_then(|providers| providers.get_mut(id))
-		.and_then(Value::as_object_mut)
-	{
-		provider.insert("models".into(), Value::Array(entries));
-	}
-	write_json_secure(&path, &root)
+    let path = models_json_path();
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Ok(());
+    };
+    let mut root: Value = serde_json::from_str(&raw).map_err(|err| err.to_string())?;
+    let entries: Vec<Value> = models
+        .iter()
+        .map(|model| {
+            let mut entry = Map::new();
+            entry.insert("id".into(), Value::String(model.id.clone()));
+            if let Some(window) = model.context_window {
+                entry.insert("contextWindow".into(), Value::from(window));
+            }
+            entry.insert("reasoning".into(), Value::Bool(true));
+            Value::Object(entry)
+        })
+        .collect();
+    if let Some(provider) = root
+        .get_mut("providers")
+        .and_then(|providers| providers.get_mut(id))
+        .and_then(Value::as_object_mut)
+    {
+        provider.insert("models".into(), Value::Array(entries));
+    }
+    write_json_secure(&path, &root)
 }
 
-/// `GET {base_url}/models` on the OpenAI-compatible relay. Best-effort: a
-/// relay that is offline or non-standard simply contributes no models.
-fn ccswitch_relay_model_ids(base_url: &str, api_key: &str) -> Vec<String> {
-    let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-    {
-        Ok(client) => client,
-        Err(_) => return Vec::new(),
-    };
-    let response = match client.get(url).bearer_auth(api_key).send() {
-        Ok(response) => response,
-        Err(_) => return Vec::new(),
-    };
-    if !response.status().is_success() {
-        return Vec::new();
-    }
-    let text = match response.text() {
-        Ok(text) => text,
-        Err(_) => return Vec::new(),
-    };
-    let body: Value = match serde_json::from_str(&text) {
-        Ok(body) => body,
-        Err(_) => return Vec::new(),
-    };
-    let mut ids = Vec::new();
-    if let Some(entries) = body.get("data").and_then(Value::as_array) {
-        for entry in entries {
-            if let Some(id) = entry.get("id").and_then(Value::as_str) {
-                ids.push(id.to_string());
-            }
-        }
-    }
-    ids
-}
 
 fn ccswitch_provider_id(source_id: &str, app_type: &str) -> String {
     let id = source_id
@@ -1388,46 +1333,48 @@ mod tests {
         assert!(ccswitch_mapping(&config, None).is_none());
     }
 
+    
+    
     #[test]
-    fn models_put_the_configured_model_first() {
-        let dir = std::env::temp_dir().join(format!("orbit-ccswitch-empty-{}", std::process::id()));
+    fn template_drives_the_model_list_and_pins_unknown_configured_model() {
+        let dir = std::env::temp_dir().join(format!("orbit-ccswitch-template-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        let template = dir.join("provider-model-template.json");
+        std::fs::write(
+            &template,
+            r#"{"models":[{"id":"gpt-6.1-sol","contextWindow":272000,"reasoning":true},{"id":"gpt-6-astra","contextWindow":272000,"reasoning":true}]}"#,
+        )
+        .unwrap();
         let config = serde_json::json!({
             "config": "model = \"gpt-5.6-sol\"\nmodel_provider = \"relay\"\nmodel_context_window = 278528\n\n[model_providers.relay]\nbase_url = \"https://api.relay.test/v1\"\nwire_api = \"responses\"\n"
         });
-        let models = ccswitch_models(&config, "https://api.relay.test/v1", Some("sk-test"), Some(&dir));
-        // The relay is offline and the catalog dir is empty: the configured
-        // model alone remains, carrying its declared context window.
-        assert_eq!(models.len(), 1);
-        assert_eq!(models[0].id, "gpt-5.6-sol");
+        let (models, notices) = ccswitch_models(&config, &template);
+        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+        // 配置的模型不在模板中：置顶补充并产出提示。
+        assert_eq!(ids, vec!["gpt-5.6-sol", "gpt-6.1-sol", "gpt-6-astra"]);
         assert_eq!(models[0].context_window, Some(278528));
+        assert_eq!(notices.len(), 1);
+
+        // 模板内的配置模型：不产生提示，也不重复。
+        let config_in_template = serde_json::json!({
+            "config": "model = \"gpt-6.1-sol\"\nmodel_provider = \"relay\"\n\n[model_providers.relay]\nbase_url = \"https://api.relay.test/v1\"\nwire_api = \"responses\"\n"
+        });
+        let (models, notices) = ccswitch_models(&config_in_template, &template);
+        assert_eq!(models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), vec!["gpt-6.1-sol", "gpt-6-astra"]);
+        assert!(notices.is_empty());
     }
 
     #[test]
-    fn models_merge_codex_catalogs_behind_the_configured_model() {
-        let dir = std::env::temp_dir().join(format!("orbit-ccswitch-catalog-{}", std::process::id()));
+    fn missing_template_falls_back_to_the_configured_model() {
+        let dir = std::env::temp_dir().join(format!("orbit-ccswitch-notmpl-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("cc-switch-model-catalog.json"),
-            r#"{"models":[{"slug":"gpt-5.6-terra","context_window":278528},{"slug":"gpt-5.6-sol","context_window":278528}]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("models_cache.json"),
-            r#"{"models":[{"slug":"gpt-5.3-codex","max_context_window":272000,"visibility":"list"},{"slug":"gpt-5","visibility":"hide"},{"slug":"gpt-5.6-sol","max_context_window":278528}]}"#,
-        )
-        .unwrap();
+        let template = dir.join("provider-model-template.json");
         let config = serde_json::json!({
-            "config": "model = \"gpt-5.6-terra\"\nmodel_provider = \"relay\"\n\n[model_providers.relay]\nbase_url = \"https://api.relay.test/v1\"\nwire_api = \"responses\"\n"
+            "config": "model = \"gpt-5.6-sol\"\nmodel_provider = \"relay\"\n\n[model_providers.relay]\nbase_url = \"https://api.relay.test/v1\"\nwire_api = \"responses\"\n"
         });
-        let models = ccswitch_models(&config, "https://api.relay.test/v1", Some("sk-test"), Some(&dir));
-        let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
-        assert_eq!(ids, vec!["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.3-codex"]);
-        // Hidden (retired) aliases are dropped.
-        assert!(!ids.contains(&"gpt-5"));
-        assert_eq!(models[0].context_window, Some(278528));
-        // The cache's duplicate gpt-5.6-sol did not reset the catalog window.
-        assert_eq!(models[1].context_window, Some(278528));
+        let (models, notices) = ccswitch_models(&config, &template);
+        assert_eq!(models.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), vec!["gpt-5.6-sol"]);
+        assert!(notices.is_empty());
     }
 
     #[test]
