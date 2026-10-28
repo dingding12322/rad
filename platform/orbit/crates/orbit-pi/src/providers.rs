@@ -179,12 +179,19 @@ pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
             skipped += 1;
             continue;
         };
+        let id = ccswitch_provider_id(source_id, "codex");
+        // Re-import semantics: an existing provider is left untouched — the
+        // user may have curated its model list, and a re-run must not restore
+        // models they deleted. Only brand-new relays are added.
+        if ccswitch_provider_exists(&id) {
+            skipped += 1;
+            continue;
+        }
         let models = ccswitch_models(&config, &base_url, api_key.as_deref(), None);
         if models.is_empty() {
             skipped += 1;
             continue;
         }
-        let id = ccswitch_provider_id(source_id, "codex");
         let model_ids: Vec<String> = models.iter().map(|model| model.id.clone()).collect();
         write_provider(
             &id,
@@ -206,6 +213,17 @@ pub(crate) fn import_ccswitch() -> Result<(usize, usize), String> {
 /// Remove providers this import no longer manages: earlier builds also wrote
 /// `ccswitch-claude-*` / `ccswitch-gemini-*` entries from the same CCSwitch
 /// database, and the user scoped the import to Codex relays only.
+/// Whether `models.json` already has this imported provider.
+fn ccswitch_provider_exists(id: &str) -> bool {
+    let Ok(raw) = std::fs::read_to_string(models_json_path()) else {
+        return false;
+    };
+    serde_json::from_str::<Value>(&raw)
+        .ok()
+        .and_then(|root| root.get("providers").and_then(Value::as_object).map(|providers| providers.contains_key(id)))
+        .unwrap_or(false)
+}
+
 fn ccswitch_remove_stale() -> Result<(), String> {
     ccswitch_remove_stale_at(&models_json_path(), &auth_path())
 }
