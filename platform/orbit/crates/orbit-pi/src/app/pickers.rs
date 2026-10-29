@@ -172,12 +172,36 @@ impl OrbitApp {
     /// one closes the other; clicking the open chip closes it. Re-checks the
     /// catalog on open so the list always reflects the live pi session.
     /// Set the composer's relay filter (the scope the model picker opens
-    /// with) and remember it across restarts.
+    /// with) and remember it across restarts. Picking a relay also switches
+    /// to that relay's most recently used model — or its first one — so the
+    /// composer never keeps a model the chosen relay can't serve; "all
+    /// providers" only clears the scope.
     pub(super) fn set_provider_filter(
         &mut self,
         provider: Option<String>,
         cx: &mut Context<Self>,
     ) {
+        if let Some(provider) = provider.as_deref() {
+            if self.model_provider != provider {
+                let target = crate::recent_models::all()
+                    .entries()
+                    .iter()
+                    .find(|(entry_provider, _)| entry_provider == provider)
+                    .and_then(|(entry_provider, id)| {
+                        self.available_models.iter().find(|model| {
+                            model.provider == *entry_provider && model.id == *id
+                        })
+                    })
+                    .or_else(|| {
+                        self.available_models
+                            .iter()
+                            .find(|model| model.provider == provider)
+                    });
+                if let Some(model) = target {
+                    self.set_model(model.id.clone(), model.provider.clone(), cx);
+                }
+            }
+        }
         self.relay_filter = provider.clone();
         crate::provider_filter::save(provider.as_deref());
         cx.notify();

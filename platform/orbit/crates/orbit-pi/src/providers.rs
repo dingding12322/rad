@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 use serde_json::{Map, Value};
 
@@ -289,6 +289,10 @@ fn ccswitch_remove_stale_at(models_path: &Path, auth_path: &Path) -> Result<(), 
 struct CcswitchModel {
     id: String,
     context_window: Option<u64>,
+    /// pi thinking-level → wire effort mapping, copied verbatim from the
+    /// Codex catalog. `xhigh`/`max` only appear in the picker when mapped,
+    /// and `off: null` marks a model that cannot switch reasoning off.
+    thinking_level_map: Option<Value>,
 }
 
 /// The provider's model list, in priority order:
@@ -315,6 +319,7 @@ fn ccswitch_models(
                 models.push(CcswitchModel {
                     id: id.to_string(),
                     context_window: model.get("contextWindow").and_then(Value::as_u64),
+                    thinking_level_map: model.get("thinkingLevelMap").cloned(),
                 });
             }
         }
@@ -335,6 +340,7 @@ fn ccswitch_models(
             CcswitchModel {
                 id: current,
                 context_window: window,
+                thinking_level_map: None,
             },
         );
     }
@@ -359,6 +365,9 @@ fn write_provider_models_full(id: &str, models: &[CcswitchModel]) -> Result<(), 
                 entry.insert("contextWindow".into(), Value::from(window));
             }
             entry.insert("reasoning".into(), Value::Bool(true));
+            if let Some(map) = &model.thinking_level_map {
+                entry.insert("thinkingLevelMap".into(), map.clone());
+            }
             Value::Object(entry)
         })
         .collect();
@@ -1191,6 +1200,33 @@ fn write_json_secure(path: &Path, root: &Value) -> Result<(), String> {
 
 /// Human label for a provider id (`amazon-bedrock` → `Amazon Bedrock`), with
 /// the handful of brands that don't title-case cleanly spelled out.
+/// Display names of the custom models.json providers, keyed by id. Cached
+/// against the file's mtime so render loops don't re-read the JSON; an
+/// import (which rewrites the file) invalidates it naturally.
+fn custom_provider_names() -> std::collections::HashMap<String, String> {
+    static CACHE: Mutex<Option<(std::time::SystemTime, std::collections::HashMap<String, String>)>> =
+        Mutex::new(None);
+    let path = models_json_path();
+    let mtime = std::fs::metadata(&path).and_then(|meta| meta.modified()).ok();
+    let Ok(mut cache) = CACHE.lock() else {
+        return std::collections::HashMap::new();
+    };
+    if let (Some(mtime), Some((cached_at, names))) = (mtime, cache.as_ref()) {
+        if *cached_at == mtime {
+            return names.clone();
+        }
+    }
+    let names: std::collections::HashMap<String, String> = read_custom()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|provider| provider.name.map(|name| (provider.id, name)))
+        .collect();
+    if let Some(mtime) = mtime {
+        *cache = Some((mtime, names.clone()));
+    }
+    names
+}
+
 pub(crate) fn provider_display_name(id: &str) -> String {
     if let Some(provider) = builtin(id) {
         return provider.name.to_string();
@@ -1234,6 +1270,9 @@ pub(crate) fn provider_display_name(id: &str) -> String {
     };
     if !known.is_empty() {
         return known.to_string();
+    }
+    if let Some(name) = custom_provider_names().get(id) {
+        return name.clone();
     }
     id.split(['-', '_'])
         .filter(|part| !part.is_empty())
