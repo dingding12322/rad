@@ -35,6 +35,7 @@ import {
 	createPowerShellTool,
 	createReadOnlyTools,
 	createReadTool,
+	createSkillSearchTool,
 	createWriteTool,
 	withFileMutationQueue,
 } from "./tools/index.ts";
@@ -65,7 +66,7 @@ export interface CreateAgentSessionOptions {
 	 * Optional default tool suppression mode when no explicit allowlist is provided.
 	 *
 	 * - "all": start with no tools enabled
-	 * - "builtin": disable the default built-in tools (read, bash, edit, write)
+	 * - "builtin": disable the default built-in tools (read, bash, edit, write, skill_search)
 	 *   but keep extension/custom tools enabled
 	 */
 	noTools?: "all" | "builtin";
@@ -74,7 +75,7 @@ export interface CreateAgentSessionOptions {
 	 *
 	 * When omitted, pi uses the resolved `defaultTools` setting for the initial
 	 * selection when configured. Otherwise it enables the default built-in tools
-	 * (read, bash, edit, write). Extension/custom tools remain enabled unless
+	 * (read, bash, edit, write, skill_search). Extension/custom tools remain enabled unless
 	 * `noTools` changes that default. When provided, only matching tools are
 	 * enabled. MCP tools stay registered for codemode and tool search unless an
 	 * entry starts with `mcp__`; then only matching MCP tools are kept. An empty
@@ -145,6 +146,7 @@ export {
 	createFindTool,
 	createLsTool,
 	createPowerShellTool,
+	createSkillSearchTool,
 };
 
 // Helper Functions

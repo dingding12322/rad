@@ -119,18 +119,20 @@ export function createToolSearchDocument(
 export class Bm25Ranker implements ToolRanker {
 	private readonly k1: number;
 	private readonly b: number;
+	private readonly tokenizer: (text: string) => string[];
 
-	constructor(options: { k1?: number; b?: number } = {}) {
+	constructor(options: { k1?: number; b?: number; tokenizer?: (text: string) => string[] } = {}) {
 		this.k1 = options.k1 ?? 1.2;
 		this.b = options.b ?? 0.75;
+		this.tokenizer = options.tokenizer ?? tokenize;
 	}
 
 	rank(query: string, documents: readonly ToolSearchDocument[], limit: number): ToolSearchMatch[] {
-		const queryTerms = [...new Set(tokenize(query))];
+		const queryTerms = [...new Set(this.tokenizer(query))];
 		if (queryTerms.length === 0 || documents.length === 0 || limit <= 0) return [];
 		const termCounts = documents.map((document) => {
 			const counts = new Map<string, number>();
-			for (const term of tokenize(document.text)) counts.set(term, (counts.get(term) ?? 0) + 1);
+			for (const term of this.tokenizer(document.text)) counts.set(term, (counts.get(term) ?? 0) + 1);
 			return counts;
 		});
 		const lengths = termCounts.map((counts) => [...counts.values()].reduce((sum, count) => sum + count, 0));
@@ -157,9 +159,13 @@ export class Bm25Ranker implements ToolRanker {
 }
 
 export const toolSearchSchema = Type.Object({
-	query: Type.String({ description: "Search query for deferred tools." }),
+	query: Type.String({ description: "Search query for deferred tools.", minLength: 1 }),
 	limit: Type.Optional(
-		Type.Number({ description: `Maximum number of tools to return. Defaults to ${DEFAULT_TOOL_SEARCH_LIMIT}.` }),
+		Type.Integer({
+			description: `Maximum number of tools to load. Defaults to ${DEFAULT_TOOL_SEARCH_LIMIT}.`,
+			minimum: 1,
+			maximum: DEFAULT_TOOL_SEARCH_LIMIT,
+		}),
 	),
 });
 
@@ -230,13 +236,18 @@ export function createToolSearchToolDefinition(
 		async execute(_toolCallId, { query, limit }) {
 			if (query.trim() === "") throw new Error("query must not be empty");
 			const max = limit ?? DEFAULT_TOOL_SEARCH_LIMIT;
-			if (!Number.isInteger(max) || max <= 0) throw new Error("limit must be a positive integer");
+			if (!Number.isInteger(max) || max <= 0 || max > DEFAULT_TOOL_SEARCH_LIMIT) {
+				throw new Error(`limit must be an integer between 1 and ${DEFAULT_TOOL_SEARCH_LIMIT}`);
+			}
 			const tools = options.tools ? searchAndLoad(options.tools, query, max) : [];
 			const text =
 				tools.length === 0
 					? "No matching tools found."
 					: `Loaded ${tools.length} tool${tools.length === 1 ? "" : "s"}. They are available from your next call:\n${tools
-							.map((tool) => `- ${tool.name}: ${tool.description.trim().split(/\r?\n/)[0]}`)
+							.map((tool) => {
+								const summary = tool.description.trim().split(/\r?\n/, 1)[0];
+								return `- ${tool.name}: ${summary.length > 512 ? `${summary.slice(0, 509)}...` : summary}`;
+							})
 							.join("\n")}`;
 			return { content: [{ type: "text", text }], details: { loaded: tools.map((tool) => tool.name) } };
 		},

@@ -1,6 +1,6 @@
 # Skills
 
-Skills give Pi specialized instructions and supporting files for a particular kind of work. Pi advertises each available skill by name and description, then loads its full instructions only when the task calls for them.
+Skills give Pi specialized instructions and supporting files for a particular kind of work. The model searches skill names and descriptions with `skill_search`, then reads a matching skill's instructions when the task calls for them.
 
 Use a skill when a workflow needs more context than a prompt template but does not need a new executable integration point. Skills can bundle scripts, references, and assets alongside their instructions.
 
@@ -40,9 +40,11 @@ Use relative paths from the skill directory when referring to bundled files. Pi 
 
 ## Understand how skills load
 
-At startup, Pi scans configured skill locations and adds each skill’s name, description, and path to the system prompt. It does not add the full instructions.
+At startup, Pi scans configured skill locations to build a local catalog. The system prompt contains only a short discovery hint, without the catalog's names, descriptions, paths, or full instructions.
 
-When a task matches, the model reads `SKILL.md` and follows its instructions. This keeps detailed guidance out of context until it is needed. A model might fail to load a relevant skill, so use `/skill:name` when you need to force it.
+When a task needs specialized guidance, the model calls `skill_search` with a query. Search ranks names and descriptions and returns at most 8 matching names, description summaries of at most 512 characters, and file paths. It does not read skill bodies. The model then reads a matching `SKILL.md` and follows its instructions. Search uses the current resource-loader catalog, including configured paths, exclusions, and project trust; `/reload` refreshes it.
+
+`skill_search` is enabled by default. An explicit tool selection must include it and a file-reading tool such as `read` or `bash` for automatic discovery and loading. Pi omits the discovery hint when those tools are unavailable. Use `/skill:name` when you need to load a skill explicitly.
 
 Arguments after `/skill:name` are appended to the loaded instructions as a user request:
 

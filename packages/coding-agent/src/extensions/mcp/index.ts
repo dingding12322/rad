@@ -146,34 +146,10 @@ function hasDirectTools(entry: McpServerEntry): boolean {
 	return configuredExposures(entry).has("direct");
 }
 
-/** Whether some of the server's tools are reached through codemode or tool_search. */
-function hasIndirectTools(entry: McpServerEntry): boolean {
-	const exposures = configuredExposures(entry);
-	return exposures.has("codemode") || exposures.has("deferred");
-}
-
-/** Name of the system prompt section that lists the servers whose tools are not declared. */
+/** Name of the system prompt section for discovering undeclared MCP tools. */
 export const MCP_SERVERS_SECTION = "mcp_servers";
-/** Characters of a server description in the section, as Codex allows for deferred namespaces. */
-const MAX_SERVER_DESCRIPTION_CHARS = 250;
-/**
- * Characters of the whole section. Descriptions shrink to fit; when the server lines alone do not
- * fit, the last servers are left out and counted in a closing line.
- */
+/** Upper bound for the section, which stays fixed as the server catalog grows. */
 export const MAX_SERVERS_SECTION_CHARS = 4096;
-
-/** The section's first line. It explains only the ways of reaching tools that the listed servers use. */
-function serversSectionIntro(reaches: ReadonlySet<string>): string {
-	let intro = "MCP servers whose tools are not declared to you.";
-	if (reaches.has("codemode")) intro += " Call the tools of `codemode` servers from codemode scripts.";
-	if (reaches.has("tool_search")) intro += " Load the tools of `tool_search` servers with `tool_search`.";
-	return intro;
-}
-
-function truncate(text: string, max: number): string {
-	if (text.length <= max) return text;
-	return max <= 1 ? "" : `${text.slice(0, max - 1).trimEnd()}…`;
-}
 
 /** What the `mcp_servers` section needs of a server. */
 export interface McpServerListing {
@@ -181,43 +157,20 @@ export interface McpServerListing {
 	connection?: { instructions?: string };
 }
 
-/** First line of the configured description, or of the server instructions once connected. */
-function serverSummary(server: McpServerListing): string {
-	const text = server.entry.config.description?.trim() || server.connection?.instructions || "";
-	return (text.split("\n", 1)[0] ?? "").trim();
-}
-
 /**
- * The `mcp_servers` section: every enabled server with codemode or deferred tools, with how its
- * tools are reached and a one-line summary. The model learns of the servers from it, since neither
- * codemode nor tool_search lists them. Undefined when there are no such servers.
+ * Discovery hints only: server names and instructions remain searchable metadata. Connection
+ * updates and catalog growth must not append server listings to the conversation.
  */
 export function renderServersSection(servers: readonly McpServerListing[]): string | undefined {
-	const listed = servers
-		.filter((server) => isEnabled(server) && hasIndirectTools(server.entry))
-		.sort((a, b) => a.entry.name.localeCompare(b.entry.name));
-	if (listed.length === 0) return undefined;
-	const reaches = listed.map((server) =>
-		configuredExposures(server.entry).has("codemode") ? "codemode" : "tool_search",
-	);
-	const intro = serversSectionIntro(new Set(reaches));
-	const heads = listed.map((server, index) => `- ${mcpNamespace(server.entry.name)} (${reaches[index]})`);
-	const omitted = (count: number) =>
-		count > 0 ? [`- … ${count} more server${count === 1 ? "" : "s"}; find their tools with searchTools()`] : [];
-	// Characters of the intro, the first `kept` server lines without descriptions, and the omission line.
-	const size = (kept: number) => [intro, ...heads.slice(0, kept), ...omitted(listed.length - kept)].join("\n").length;
-	let kept = listed.length;
-	while (kept > 0 && size(kept) > MAX_SERVERS_SECTION_CHARS) kept--;
-	// Each description also takes a ": " separator.
-	const perServer =
-		kept === 0
-			? 0
-			: Math.min(MAX_SERVER_DESCRIPTION_CHARS, Math.floor((MAX_SERVERS_SECTION_CHARS - size(kept)) / kept) - 2);
-	const lines = listed.slice(0, kept).map((server, index) => {
-		const summary = perServer > 0 ? truncate(serverSummary(server), perServer) : "";
-		return summary ? `${heads[index]}: ${summary}` : heads[index];
-	});
-	return [intro, ...lines, ...omitted(listed.length - kept)].join("\n");
+	const exposures = new Set(servers.filter(isEnabled).flatMap((server) => [...configuredExposures(server.entry)]));
+	const hints: string[] = [];
+	if (exposures.has("codemode")) {
+		hints.push(
+			"Use searchTools() in codemode scripts to find MCP tools; describeNamespace() loads server instructions.",
+		);
+	}
+	if (exposures.has("deferred")) hints.push("Use tool_search to find and load MCP tools for the next call.");
+	return hints.length > 0 ? hints.join(" ") : undefined;
 }
 
 /**
@@ -1173,8 +1126,7 @@ export function createMcpExtension(options: McpExtensionOptions = {}): Extension
 			}
 		};
 
-		// Every prompt lists the servers in the `mcp_servers` section as they are when it starts. Pi
-		// appends the section to the conversation when it changed, for example after a server connected.
+		// Discovery hints depend only on configured exposure, not connection state or server metadata.
 		pi.on("before_agent_start", async (event, ctx) => {
 			await waitForDirectServers(ctx);
 			const { sections } = event.systemPromptOptions;

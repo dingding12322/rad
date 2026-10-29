@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Skills are discovered on demand with the default `skill_search` tool instead of listing the full catalog in the system prompt. Search returns at most 8 matching names, description summaries, and paths; the model reads skill instructions separately. Explicit tool selections need `skill_search` and a file-reading tool for automatic discovery.
+- MCP discovery hints no longer list servers or change when they connect. `tool_search` loads at most 8 tools per call; skill and tool search summaries are limited to 512 characters. Pi documentation guidance now scopes reading to the relevant sections for narrow changes.
 - `pi update` for installs from the pi.dev installer no longer passes `--min-release-age=0` to `npm ci`. The release lockfile pins every package, so the flag had no effect, and security scanners that block it stopped the update ([#11262](https://github.com/earendil-works/pi/issues/11262))
 
 ## [1.4.0] - 2026-10-21

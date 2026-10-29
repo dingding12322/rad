@@ -10,6 +10,12 @@ impl OrbitApp {
         self.status_at = Some(Instant::now());
     }
 
+    /// Clear a transient status immediately, including its expiry timer.
+    pub(super) fn clear_status(&mut self) {
+        self.status.clear();
+        self.status_at = None;
+    }
+
     /// Record a command / protocol / extension error. Unlike the transient
     /// status line, errors persist (in a red banner) until dismissed or
     /// superseded, so a failure is never silently lost.

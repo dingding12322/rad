@@ -107,6 +107,10 @@ Each boundary can be supplied explicitly:
 
 Use `DefaultResourceLoader` when you want standard discovery with selected overrides. Supply a custom `ResourceLoader` when the host owns resource storage and discovery completely.
 
+Default sessions include `skill_search`, wired to the current `resourceLoader.getSkills().skills` catalog. The model receives a discovery hint and searches up to 8 matching skill names, descriptions, and paths before reading instructions. Keep `skill_search` and a file-reading tool in explicit `tools` selections to retain automatic skill discovery.
+
+Standalone tool factories (`createSkillSearchTool`, `createSkillSearchToolDefinition`, and the grouped factories such as `createCodingTools`) accept `getSkills: () => loader.getSkills().skills`. Without this callback, their skill search returns no matches. Factories do not scan additional paths, so the host's resource loader controls the catalog and trust decisions.
+
 <a id="inlineextension"></a>
 
 Inline extension factories can be supplied through `DefaultResourceLoader`. Give one an `InlineExtension` name only when it needs a stable name in diagnostics and startup output. A named inline extension with `replaceable: true` is left out when another extension registers a tool, command, or flag with a name it registers during loading, instead of both loading with a conflict. The CLI's built-in codemode, tool search, and MCP extensions are replaceable. A named entry with `builtin: true` is not an inline extension: it supplies the code of the `builtin:<name>` extension, which loads like a configured extension file. It loads by default, is listed in `pi config`, and is disabled by `-builtin:<name>` in the `extensions` setting or by `noExtensions`; `additionalExtensionPaths: ["builtin:<name>"]` loads it explicitly. It loads after project trust is resolved, so it cannot handle `project_trust`. The CLI's built-in extensions use it.

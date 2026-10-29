@@ -51,6 +51,8 @@ impl OrbitApp {
             "setStatus" => {
                 if let Some(text) = value.get("statusText").and_then(Value::as_str) {
                     self.set_status(text.to_owned());
+                } else {
+                    self.clear_status();
                 }
             }
             // Seed the composer with the extension's text (pi's `setEditorText`).
